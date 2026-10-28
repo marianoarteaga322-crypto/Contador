@@ -9,10 +9,10 @@ def main(page: ft.Page):
     page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
     page.bgcolor = "#0F172A"
     
-    # Bloque de seguridad para capturar cualquier error de arranque en Android
     try:
-        # Ruta segura para la base de datos en móviles
-        db_path = "finanzas_repartidor.db"
+        # Ruta 100% segura y con permisos de escritura en Android
+        db_dir = os.path.expanduser("~")
+        db_path = os.path.join(db_dir, "finanzas_repartidor.db")
         
         def init_db():
             conn = sqlite3.connect(db_path)
@@ -244,7 +244,6 @@ def main(page: ft.Page):
             bgcolor="#1E293B", padding=15, border_radius=12, margin=ft.margin.only(bottom=10)
         )
 
-        # Iconos seguros estándar de Flet (evita fallos en Android)
         tabs = ft.Tabs(
             selected_index=0,
             animation_duration=300,
@@ -270,7 +269,6 @@ def main(page: ft.Page):
         refrescar_lista_categorias()
 
     except Exception as ex:
-        # Si algo falla al iniciar, lo muestra en grande en la pantalla del celular para saber qué fue
         page.clean()
-        page.add(ft.Text(f"Error al iniciar app:\n{str(ex)}", color="red", size=16))
+        page.add(ft.Text(f"Error crítico al iniciar:\n{str(ex)}", color="red", size=14))
         page.update()
