@@ -10,7 +10,7 @@ def main(page: ft.Page):
     page.bgcolor = "#0F172A"
     
     try:
-        # Ruta 100% segura y con permisos de escritura en Android
+        # Ruta 100% segura para guardar la base de datos en Android
         db_dir = os.path.expanduser("~")
         db_path = os.path.join(db_dir, "finanzas_repartidor.db")
         
@@ -272,3 +272,6 @@ def main(page: ft.Page):
         page.clean()
         page.add(ft.Text(f"Error crítico al iniciar:\n{str(ex)}", color="red", size=14))
         page.update()
+
+# Esta línea es obligatoria para que la app no se cierre sola
+ft.app(target=main)
