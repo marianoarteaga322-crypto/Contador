@@ -22,11 +22,11 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # --- NUEVO PASO: Instalar Flutter ---
+      # Instalamos la versión exacta de Flutter compatible con tu Flet
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          flutter-version: '3.19.6'
 
       - name: Install dependencies
         run: |
