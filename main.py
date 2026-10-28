@@ -206,17 +206,25 @@ def main(page: ft.Page):
         page.bottom_sheet.open = False
         page.update()
 
-    # --- 1. BIENVENIDA ---
+# --- PANTALLA 1: BIENVENIDA ---
     vista_bienvenida = ft.Container(
         expand=True,
-        gradient=ft.LinearGradient(begin=ft.alignment.top_left, end=ft.alignment.bottom_right, colors=[C_PURPLE, C_BG, C_BG]),
+        gradient=ft.LinearGradient(
+            begin=ft.alignment.top_left, end=ft.alignment.bottom_right,
+            colors=[C_PURPLE, C_BG, C_BG]
+        ),
         content=ft.Column([
             ft.Container(height=100),
             ft.Icon(ft.icons.MULTILINE_CHART, size=100, color=C_BLUE),
             ft.Text("Control\nFinanciero", size=40, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN, text_align=ft.TextAlign.CENTER),
             ft.Text("Gestiona tus repartos de forma inteligente.", size=16, color=C_TEXT_SEC, text_align=ft.TextAlign.CENTER),
             ft.Container(expand=True),
-            ft.ElevatedButton("Comenzar", bgcolor=C_BLUE, color="#FFFFFF", width=300, height=55, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=15)), on_click=lambda e: page.go("/")),
+            ft.ElevatedButton(
+                "Comenzar", 
+                bgcolor=C_BLUE, color="#FFFFFF", width=300, height=55,
+                style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=15)),
+                on_click=lambda e: iniciar_app()
+            ),
             ft.Container(height=40)
         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER)
     )
