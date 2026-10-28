@@ -5,13 +5,12 @@ import os
 import time
 
 def main(page: ft.Page):
-    # --- CONFIGURACIÓN BASE MÓVIL ---
     page.title = "Control Financiero"
     page.theme_mode = ft.ThemeMode.DARK
     page.bgcolor = "#0B0E17"
-    # IMPORTANTE: Eliminamos window_width y window_height para forzar pantalla completa en Android
+    page.padding = 0
 
-    # Paleta de colores Premium
+    # Paleta Premium
     C_BG = "#0B0E17"
     C_CARD = "#151B2B"
     C_BLUE = "#3B82F6"
@@ -56,7 +55,6 @@ def main(page: ft.Page):
                 nombre TEXT
             )
         """)
-        # Forzar categorías predeterminadas si está vacío
         cursor.execute("SELECT COUNT(*) FROM categorias")
         if cursor.fetchone()[0] == 0:
             default_cats = [
@@ -72,7 +70,6 @@ def main(page: ft.Page):
 
     init_db()
 
-    # --- ACTUALIZAR TIEMPO DE SESIÓN ---
     def registrar_actividad():
         page.client_storage.set("last_active", time.time())
 
@@ -165,9 +162,46 @@ def main(page: ft.Page):
                 )
         page.update()
 
-    # --- COMPONENTES VISUALES ---
+    # --- PANEL DE NOTIFICACIONES FUNCIONAL ---
+    def abrir_notificaciones(e):
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT SUM(isr + iva) FROM movimientos")
+        res = cursor.fetchone()
+        conn.close()
+        total_impuestos = res[0] or 0.0
 
-    # 1. BIENVENIDA
+        page.bottom_sheet = ft.BottomSheet(
+            ft.Container(
+                bgcolor=C_CARD, padding=25, border_radius=ft.border_radius.vertical(top=20),
+                content=ft.Column([
+                    ft.Row([
+                        ft.Text("Resumen y Alertas", size=20, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN),
+                        ft.IconButton(ft.icons.CLOSE, icon_color=C_TEXT_SEC, on_click=lambda e: cerrar_sheet())
+                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                    ft.Divider(color="#334155"),
+                    ft.ListTile(
+                        leading=ft.Icon(ft.icons.LIGHTBULB_OUTLINE, color="#FBBF24"),
+                        title=ft.Text("Consejo Financiero", color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD),
+                        subtitle=ft.Text("Recuerda separar tus retenciones semanales para evitar sorpresas con el SAT.", color=C_TEXT_SEC)
+                    ),
+                    ft.ListTile(
+                        leading=ft.Icon(ft.icons.RECEIPT_LONG, color=C_BLUE),
+                        title=ft.Text(f"Impuestos Acumulados: ${total_impuestos:,.2f}", color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD),
+                        subtitle=ft.Text("ISR y IVA estimado retenido hasta la fecha.", color=C_TEXT_SEC)
+                    ),
+                    ft.Container(height=10)
+                ], tight=True)
+            )
+        )
+        page.bottom_sheet.open = True
+        page.update()
+
+    def cerrar_sheet():
+        page.bottom_sheet.open = False
+        page.update()
+
+    # --- 1. BIENVENIDA ---
     vista_bienvenida = ft.Container(
         expand=True,
         gradient=ft.LinearGradient(begin=ft.alignment.top_left, end=ft.alignment.bottom_right, colors=[C_PURPLE, C_BG, C_BG]),
@@ -182,20 +216,17 @@ def main(page: ft.Page):
         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER)
     )
 
-    # 2. DASHBOARD
+    # --- 2. DASHBOARD ---
     vista_dashboard = ft.Container(
         expand=True,
         gradient=ft.LinearGradient(begin=ft.alignment.top_center, end=ft.alignment.center, colors=["#1E1B4B", C_BG]),
         padding=20,
         content=ft.Column([
             ft.Row([
-                ft.Row([
-                    ft.CircleAvatar(content=ft.Text("M", weight=ft.FontWeight.BOLD), bgcolor=C_BLUE, color="#FFFFFF"),
-                    ft.Text("Hola, Mariano", size=18, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN)
-                ]),
-                ft.IconButton(ft.icons.NOTIFICATIONS, icon_color=C_TEXT_SEC)
+                ft.Text("Hola, Mariano", size=20, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN),
+                ft.IconButton(ft.icons.NOTIFICATIONS_OUTLINED, icon_color=C_TEXT_MAIN, on_click=abrir_notificaciones)
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-            ft.Container(height=20),
+            ft.Container(height=10),
             ft.Text("Saldo Neto Disponible", size=14, color=C_TEXT_SEC, text_align=ft.TextAlign.CENTER),
             ft.Container(content=txt_saldo_principal, alignment=ft.alignment.center),
             ft.Container(height=20),
@@ -215,7 +246,7 @@ def main(page: ft.Page):
         ])
     )
 
-    # 3. REGISTRO (FORMULARIO INTELIGENTE)
+    # --- 3. REGISTRO (CON CONTROL DE IMPUESTOS PERSONALIZADO) ---
     tipo_registro = ft.Dropdown(
         label="Tipo de Movimiento",
         options=[ft.dropdown.Option("Ingreso"), ft.dropdown.Option("Gasto")],
@@ -224,14 +255,19 @@ def main(page: ft.Page):
     input_monto = ft.TextField(label="Monto Bruto ($)", prefix_text="$ ", keyboard_type=ft.KeyboardType.NUMBER, bgcolor=C_CARD, border_color="transparent", border_radius=12)
     input_efectivo = ft.TextField(label="Efectivo Recibido ($)", prefix_text="$ ", keyboard_type=ft.KeyboardType.NUMBER, bgcolor=C_CARD, border_color="transparent", border_radius=12)
     cat_dropdown = ft.Dropdown(label="Categoría", bgcolor=C_CARD, border_color="transparent", border_radius=12)
+    
+    # Interruptor para aplicar impuestos o dejarlos libres (ej. Propinas)
+    switch_impuestos = ft.Switch(label="Aplicar retención de impuestos (ISR + IVA)", value=True, active_color=C_BLUE)
 
     def actualizar_form_registro(e=None):
         if tipo_registro.value == "Ingreso":
             input_efectivo.visible = True
+            switch_impuestos.visible = True
             input_monto.label = "Ganancia Bruta del Día ($)"
             cat_dropdown.options = [ft.dropdown.Option(c) for c in obtener_categorias("Ingreso")]
         else:
             input_efectivo.visible = False
+            switch_impuestos.visible = False
             input_efectivo.value = "0"
             input_monto.label = "Monto del Gasto ($)"
             cat_dropdown.options = [ft.dropdown.Option(c) for c in obtener_categorias("Gasto")]
@@ -254,16 +290,20 @@ def main(page: ft.Page):
         tipo = tipo_registro.value
 
         if tipo == "Ingreso":
-            isr = (mt + ef) * 0.021
-            iva = (mt + ef) * 0.08
+            if switch_impuestos.value:
+                isr = (mt + ef) * 0.021
+                iva = (mt + ef) * 0.08
+            else:
+                isr = 0
+                iva = 0 # Libre de impuestos (ej. propinas)
             neta = mt - (isr + iva)
             gastos_val = 0
         else:
             isr = 0
             iva = 0
-            neta = -mt # Resta a la ganancia
+            neta = -mt 
             gastos_val = mt
-            mt = 0 # No es ingreso
+            mt = 0
 
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
@@ -273,10 +313,11 @@ def main(page: ft.Page):
         conn.close()
 
         input_monto.value, input_efectivo.value = "", ""
+        switch_impuestos.value = True
         actualizar_dashboard()
         cargar_historial()
         mostrar_notificacion("¡Registro guardado con éxito!", C_GREEN)
-        page.go("/") # Vuelve al inicio
+        page.go("/")
 
     vista_registro = ft.Container(
         expand=True, bgcolor=C_BG, padding=20,
@@ -285,15 +326,17 @@ def main(page: ft.Page):
                 ft.IconButton(ft.icons.ARROW_BACK_IOS, icon_color=C_TEXT_MAIN, on_click=lambda e: page.go("/")),
                 ft.Text("Nuevo Registro", size=24, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN)
             ]),
-            ft.Text("Selecciona el tipo de movimiento a registrar.", color=C_TEXT_SEC),
-            ft.Container(height=20),
+            ft.Text("Selecciona el tipo de movimiento y sus opciones.", color=C_TEXT_SEC),
+            ft.Container(height=15),
             tipo_registro, input_monto, input_efectivo, cat_dropdown,
+            ft.Container(height=5),
+            switch_impuestos,
             ft.Container(height=20),
             ft.ElevatedButton("Guardar Registro", bgcolor=C_BLUE, color="#FFFFFF", width=float('inf'), height=55, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=15)), on_click=guardar_cierre)
-        ])
+        ], scroll=ft.ScrollMode.AUTO)
     )
 
-    # 4. AJUSTES
+    # --- 4. AJUSTES ---
     input_n_cat = ft.TextField(label="Nombre de categoría", expand=True, bgcolor=C_CARD, border_color="transparent", border_radius=12)
     tipo_n_cat = ft.Dropdown(options=[ft.dropdown.Option("Ingreso"), ft.dropdown.Option("Gasto")], value="Ingreso", width=120, bgcolor=C_CARD, border_color="transparent", border_radius=12)
 
@@ -346,7 +389,7 @@ def main(page: ft.Page):
         ])
     )
 
-    # --- NAVEGACIÓN Y ENRUTAMIENTO NATIVO (Resuelve el botón de atrás de Android) ---
+    # --- NAVEGACIÓN Y ENRUTAMIENTO ---
     nav_bar = ft.NavigationBar(
         bgcolor=C_BG, selected_index=0,
         destinations=[
@@ -357,8 +400,6 @@ def main(page: ft.Page):
     )
 
     fab = ft.FloatingActionButton(icon=ft.icons.ADD, bgcolor=C_BLUE, shape=ft.RoundedRectangleBorder(radius=15), on_click=lambda e: page.go("/registro"))
-
-    # Contenedor base para intercambiar Inicio y Ajustes
     contenedor_base = ft.Stack([vista_dashboard, vista_ajustes], expand=True)
     
     def cambiar_tab(index):
@@ -370,7 +411,6 @@ def main(page: ft.Page):
         registrar_actividad()
         page.views.clear()
         
-        # Siempre ponemos la base al fondo (Dashboard + Ajustes)
         page.views.append(
             ft.View(
                 "/",
@@ -381,11 +421,8 @@ def main(page: ft.Page):
             )
         )
         
-        # Si la ruta es Bienvenida, la ponemos encima
         if page.route == "/welcome":
             page.views.append(ft.View("/welcome", [ft.SafeArea(vista_bienvenida, expand=True)], padding=0, bgcolor=C_BG))
-        
-        # Si la ruta es Registro, la ponemos encima
         elif page.route == "/registro":
             page.views.append(ft.View("/registro", [ft.SafeArea(vista_registro, expand=True)], padding=0, bgcolor=C_BG))
             
@@ -396,9 +433,9 @@ def main(page: ft.Page):
         page.go(page.views[-1].route)
 
     page.on_route_change = route_change
-    page.on_view_pop = view_pop # ESTO HACE QUE EL BOTÓN ATRÁS DE ANDROID FUNCIONE BIEN
+    page.on_view_pop = view_pop
 
-    # --- INICIO DE APP (Lógica de los 5 minutos) ---
+    # Inicialización
     actualizar_dashboard()
     cargar_historial()
     refrescar_cats()
@@ -407,7 +444,6 @@ def main(page: ft.Page):
     ultimo_uso = page.client_storage.get("last_active") or 0
     tiempo_actual = time.time()
     
-    # 300 segundos = 5 minutos. Si pasó menos de ese tiempo, se salta el welcome
     if (tiempo_actual - ultimo_uso) < 300:
         page.go("/")
     else:
