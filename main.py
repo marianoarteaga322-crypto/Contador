@@ -42,8 +42,7 @@ def main(page: ft.Page):
                 categoria TEXT,
                 monto_total REAL,
                 efectivo REAL,
-                isr REAL,
-                iva REAL,
+                descuento REAL,
                 gastos REAL,
                 ganancia_neta REAL
             )
@@ -52,19 +51,26 @@ def main(page: ft.Page):
             CREATE TABLE IF NOT EXISTS categorias (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 tipo TEXT,
-                nombre TEXT
+                nombre TEXT,
+                porcentaje REAL DEFAULT 0.0
             )
         """)
+        # Asegurar columna porcentaje si la tabla ya existía
+        try:
+            cursor.execute("ALTER TABLE categorias ADD COLUMN porcentaje REAL DEFAULT 0.0")
+        except sqlite3.OperationalError:
+            pass
+
         cursor.execute("SELECT COUNT(*) FROM categorias")
         if cursor.fetchone()[0] == 0:
             default_cats = [
-                ("Ingreso", "Repartos App"),
-                ("Ingreso", "Propinas"),
-                ("Gasto", "Gasolina"),
-                ("Gasto", "Mantenimiento"),
-                ("Gasto", "Comida")
+                ("Ingreso", "Repartos App", 10.1),
+                ("Ingreso", "Propinas", 0.0),
+                ("Gasto", "Gasolina", 0.0),
+                ("Gasto", "Mantenimiento", 0.0),
+                ("Gasto", "Comida", 0.0)
             ]
-            cursor.executemany("INSERT INTO categorias (tipo, nombre) VALUES (?, ?)", default_cats)
+            cursor.executemany("INSERT INTO categorias (tipo, nombre, porcentaje) VALUES (?, ?, ?)", default_cats)
         conn.commit()
         conn.close()
 
@@ -86,19 +92,19 @@ def main(page: ft.Page):
         page.snack_bar.open = True
         page.update()
 
-    def obtener_categorias(tipo_cat):
+    def obtener_categorias_con_porcentaje(tipo_cat):
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("SELECT nombre FROM categorias WHERE tipo = ?", (tipo_cat,))
-        cats = [row[0] for row in cursor.fetchall()]
+        cursor.execute("SELECT nombre, porcentaje FROM categorias WHERE tipo = ?", (tipo_cat,))
+        res = cursor.fetchall()
         conn.close()
-        return cats
+        return res # Retorna lista de tuplas (nombre, porcentaje)
 
     def actualizar_dashboard():
         registrar_actividad()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("SELECT SUM(monto_total), SUM(gastos), SUM(ganancia_neta) FROM movimientos")
+        cursor.execute("SELECT SUM(monto_total + efectivo), SUM(gastos), SUM(ganancia_neta) FROM movimientos")
         res = cursor.fetchone()
         conn.close()
 
@@ -125,7 +131,7 @@ def main(page: ft.Page):
         lista_historial.controls.clear()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("SELECT id, fecha, categoria, monto_total, ganancia_neta, tipo FROM movimientos ORDER BY id DESC LIMIT 30")
+        cursor.execute("SELECT id, fecha, categoria, ganancia_neta, tipo FROM movimientos ORDER BY id DESC LIMIT 30")
         rows = cursor.fetchall()
         conn.close()
 
@@ -141,7 +147,7 @@ def main(page: ft.Page):
             )
         else:
             for row in rows:
-                mov_id, fecha, categoria, total, neta, tipo = row
+                mov_id, fecha, categoria, neta, tipo = row
                 es_ingreso = (tipo == "Ingreso")
                 lista_historial.controls.append(
                     ft.Container(
@@ -162,14 +168,14 @@ def main(page: ft.Page):
                 )
         page.update()
 
-    # --- PANEL DE NOTIFICACIONES FUNCIONAL ---
+    # --- PANEL DE NOTIFICACIONES ---
     def abrir_notificaciones(e):
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("SELECT SUM(isr + iva) FROM movimientos")
+        cursor.execute("SELECT SUM(descuento) FROM movimientos")
         res = cursor.fetchone()
         conn.close()
-        total_impuestos = res[0] or 0.0
+        total_descuentos = res[0] or 0.0
 
         page.bottom_sheet = ft.BottomSheet(
             ft.Container(
@@ -183,12 +189,12 @@ def main(page: ft.Page):
                     ft.ListTile(
                         leading=ft.Icon(ft.icons.LIGHTBULB_OUTLINE, color="#FBBF24"),
                         title=ft.Text("Consejo Financiero", color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD),
-                        subtitle=ft.Text("Recuerda separar tus retenciones semanales para evitar sorpresas con el SAT.", color=C_TEXT_SEC)
+                        subtitle=ft.Text("Recuerda separar tus descuentos o impuestos de tus ganancias netas.", color=C_TEXT_SEC)
                     ),
                     ft.ListTile(
                         leading=ft.Icon(ft.icons.RECEIPT_LONG, color=C_BLUE),
-                        title=ft.Text(f"Impuestos Acumulados: ${total_impuestos:,.2f}", color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD),
-                        subtitle=ft.Text("ISR y IVA estimado retenido hasta la fecha.", color=C_TEXT_SEC)
+                        title=ft.Text(f"Descuentos Acumulados: ${total_descuentos:,.2f}", color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD),
+                        subtitle=ft.Text("Total retenido de tus categorías configuradas.", color=C_TEXT_SEC)
                     ),
                     ft.Container(height=10)
                 ], tight=True)
@@ -246,7 +252,7 @@ def main(page: ft.Page):
         ])
     )
 
-    # --- 3. REGISTRO (CON CONTROL DE IMPUESTOS PERSONALIZADO) ---
+    # --- 3. REGISTRO ---
     tipo_registro = ft.Dropdown(
         label="Tipo de Movimiento",
         options=[ft.dropdown.Option("Ingreso"), ft.dropdown.Option("Gasto")],
@@ -256,21 +262,29 @@ def main(page: ft.Page):
     input_efectivo = ft.TextField(label="Efectivo Recibido ($)", prefix_text="$ ", keyboard_type=ft.KeyboardType.NUMBER, bgcolor=C_CARD, border_color="transparent", border_radius=12)
     cat_dropdown = ft.Dropdown(label="Categoría", bgcolor=C_CARD, border_color="transparent", border_radius=12)
     
-    # Interruptor para aplicar impuestos o dejarlos libres (ej. Propinas)
-    switch_impuestos = ft.Switch(label="Aplicar retención de impuestos (ISR + IVA)", value=True, active_color=C_BLUE)
+    # Diccionario temporal para guardar los porcentajes de cada categoría cargada
+_cat_porcentajes = {}
 
     def actualizar_form_registro(e=None):
+        global _cat_porcentajes
+        _cat_porcentajes = {}
+        
         if tipo_registro.value == "Ingreso":
             input_efectivo.visible = True
-            switch_impuestos.visible = True
             input_monto.label = "Ganancia Bruta del Día ($)"
-            cat_dropdown.options = [ft.dropdown.Option(c) for c in obtener_categorias("Ingreso")]
+            cats = obtener_categorias_con_porcentaje("Ingreso")
+            cat_dropdown.options = []
+            for nombre, pct in cats:
+                cat_dropdown.options.append(ft.dropdown.Option(nombre))
+                _cat_porcentajes[nombre] = pct
         else:
             input_efectivo.visible = False
-            switch_impuestos.visible = False
             input_efectivo.value = "0"
             input_monto.label = "Monto del Gasto ($)"
-            cat_dropdown.options = [ft.dropdown.Option(c) for c in obtener_categorias("Gasto")]
+            cats = obtener_categorias_con_porcentaje("Gasto")
+            cat_dropdown.options = []
+            for nombre, pct in cats:
+                cat_dropdown.options.append(ft.dropdown.Option(nombre))
         
         if cat_dropdown.options:
             cat_dropdown.value = cat_dropdown.options[0].key
@@ -288,32 +302,28 @@ def main(page: ft.Page):
 
         fecha = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
         tipo = tipo_registro.value
+        categoria_seleccionada = cat_dropdown.value
 
         if tipo == "Ingreso":
-            if switch_impuestos.value:
-                isr = (mt + ef) * 0.021
-                iva = (mt + ef) * 0.08
-            else:
-                isr = 0
-                iva = 0 # Libre de impuestos (ej. propinas)
-            neta = mt - (isr + iva)
+            # Buscar el porcentaje fijo configurado para esta categoría específica
+            pct = _cat_porcentajes.get(categoria_seleccionada, 0.0)
+            descuento = (mt + ef) * (pct / 100.0)
+            neta = (mt + ef) - descuento
             gastos_val = 0
         else:
-            isr = 0
-            iva = 0
+            descuento = 0
             neta = -mt 
             gastos_val = mt
             mt = 0
 
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO movimientos (fecha, tipo, categoria, monto_total, efectivo, isr, iva, gastos, ganancia_neta) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                       (fecha, tipo, cat_dropdown.value, mt, ef, isr, iva, gastos_val, neta))
+        cursor.execute("INSERT INTO movimientos (fecha, tipo, categoria, monto_total, efectivo, descuento, gastos, ganancia_neta) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                       (fecha, tipo, categoria_seleccionada, mt, ef, descuento, gastos_val, neta))
         conn.commit()
         conn.close()
 
         input_monto.value, input_efectivo.value = "", ""
-        switch_impuestos.value = True
         actualizar_dashboard()
         cargar_historial()
         mostrar_notificacion("¡Registro guardado con éxito!", C_GREEN)
@@ -326,29 +336,43 @@ def main(page: ft.Page):
                 ft.IconButton(ft.icons.ARROW_BACK_IOS, icon_color=C_TEXT_MAIN, on_click=lambda e: page.go("/")),
                 ft.Text("Nuevo Registro", size=24, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN)
             ]),
-            ft.Text("Selecciona el tipo de movimiento y sus opciones.", color=C_TEXT_SEC),
+            ft.Text("Selecciona el tipo de movimiento y categoría.", color=C_TEXT_SEC),
             ft.Container(height=15),
             tipo_registro, input_monto, input_efectivo, cat_dropdown,
-            ft.Container(height=5),
-            switch_impuestos,
             ft.Container(height=20),
             ft.ElevatedButton("Guardar Registro", bgcolor=C_BLUE, color="#FFFFFF", width=float('inf'), height=55, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=15)), on_click=guardar_cierre)
         ], scroll=ft.ScrollMode.AUTO)
     )
 
-    # --- 4. AJUSTES ---
+    # --- 4. AJUSTES (CON CONFIGURACIÓN DE PORCENTAJE) ---
     input_n_cat = ft.TextField(label="Nombre de categoría", expand=True, bgcolor=C_CARD, border_color="transparent", border_radius=12)
-    tipo_n_cat = ft.Dropdown(options=[ft.dropdown.Option("Ingreso"), ft.dropdown.Option("Gasto")], value="Ingreso", width=120, bgcolor=C_CARD, border_color="transparent", border_radius=12)
+    tipo_n_cat = ft.Dropdown(
+        options=[ft.dropdown.Option("Ingreso"), ft.dropdown.Option("Gasto")], 
+        value="Ingreso", width=120, bgcolor=C_CARD, border_color="transparent", border_radius=12
+    )
+    input_pct_cat = ft.TextField(label="% Descuento", value="0.0", width=100, keyboard_type=ft.KeyboardType.NUMBER, bgcolor=C_CARD, border_color="transparent", border_radius=12)
+
+    def actualizar_form_ajustes(e=None):
+        if tipo_n_cat.value == "Ingreso":
+            input_pct_cat.visible = True
+        else:
+            input_pct_cat.visible = False
+            input_pct_cat.value = "0.0"
+        page.update()
+
+    tipo_n_cat.on_change = actualizar_form_ajustes
 
     def refrescar_cats():
         lista_categorias.controls.clear()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("SELECT id, tipo, nombre FROM categorias")
+        cursor.execute("SELECT id, tipo, nombre, porcentaje FROM categorias")
         for r in cursor.fetchall():
+            sub_text = f"{r[1]} • Descuento: {r[3]}%" if r[1] == "Ingreso" else r[1]
             lista_categorias.controls.append(
                 ft.ListTile(
-                    title=ft.Text(r[2], color=C_TEXT_MAIN), subtitle=ft.Text(r[1], color=C_TEXT_SEC),
+                    title=ft.Text(r[2], color=C_TEXT_MAIN), 
+                    subtitle=ft.Text(sub_text, color=C_TEXT_SEC),
                     trailing=ft.IconButton(ft.icons.DELETE, icon_color=C_RED, on_click=lambda e, cid=r[0]: borrar_cat(cid))
                 )
             )
@@ -365,23 +389,32 @@ def main(page: ft.Page):
 
     def agregar_cat(e):
         if not input_n_cat.value: return
+        try:
+            pct_val = float(input_pct_cat.value) if tipo_n_cat.value == "Ingreso" else 0.0
+        except ValueError:
+            pct_val = 0.0
+
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO categorias (tipo, nombre) VALUES (?, ?)", (tipo_n_cat.value, input_n_cat.value))
+        cursor.execute("INSERT INTO categorias (tipo, nombre, porcentaje) VALUES (?, ?, ?)", (tipo_n_cat.value, input_n_cat.value, pct_val))
         conn.commit()
         conn.close()
+        
         input_n_cat.value = ""
+        input_pct_cat.value = "0.0"
         refrescar_cats()
-        mostrar_notificacion("Categoría agregada", C_GREEN)
+        mostrar_notificacion("Categoría agregada con éxito", C_GREEN)
 
     vista_ajustes = ft.Container(
         expand=True, bgcolor=C_BG, padding=20,
         content=ft.Column([
             ft.Container(height=30),
             ft.Text("Ajustes", size=28, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN),
-            ft.Text("Administra tus categorías", color=C_TEXT_SEC),
+            ft.Text("Administra tus categorías y porcentajes", color=C_TEXT_SEC),
             ft.Container(height=20),
             ft.Row([tipo_n_cat, input_n_cat]),
+            input_pct_cat,
+            ft.Container(height=5),
             ft.ElevatedButton("Agregar Categoría", bgcolor=C_PURPLE, color="#FFFFFF", width=float('inf'), height=50, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12)), on_click=agregar_cat),
             ft.Container(height=20),
             ft.Text("Categorías Actuales", weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN),
@@ -439,11 +472,13 @@ def main(page: ft.Page):
     actualizar_dashboard()
     cargar_historial()
     refrescar_cats()
+    actualizar_form_ajustes()
     cambiar_tab(0)
     
     ultimo_uso = page.client_storage.get("last_active") or 0
     tiempo_actual = time.time()
     
+    # Lógica de los 5 minutos (300 segundos)
     if (tiempo_actual - ultimo_uso) < 300:
         page.go("/")
     else:
