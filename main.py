@@ -303,4 +303,4 @@ def main(page: ft.Page):
     cargar_historial()
     refrescar_lista_categorias()
 
-ft.app(target=main)
+ft.app(target=main, view=ft.AppView.FLET_APP)
