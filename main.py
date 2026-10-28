@@ -10,9 +10,18 @@ def main(page: ft.Page):
     page.bgcolor = "#0F172A"
     
     try:
-        # Ruta 100% segura para guardar la base de datos en Android
-        db_dir = os.path.expanduser("~")
-        db_path = os.path.join(db_dir, "finanzas_repartidor.db")
+        # --- RUTA 100% SEGURA PARA ANDROID ---
+        # Tu paquete es com.flet.contador, usamos su memoria interna garantizada
+        android_path = "/data/user/0/com.flet.contador/files"
+        android_path_alt = "/data/data/com.flet.contador/files"
+        
+        if os.path.exists(android_path):
+            db_path = os.path.join(android_path, "finanzas_repartidor.db")
+        elif os.path.exists(android_path_alt):
+            db_path = os.path.join(android_path_alt, "finanzas_repartidor.db")
+        else:
+            # Si por alguna razón lo abres en PC, lo guarda en la misma carpeta
+            db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "finanzas_repartidor.db")
         
         def init_db():
             conn = sqlite3.connect(db_path)
@@ -273,5 +282,4 @@ def main(page: ft.Page):
         page.add(ft.Text(f"Error crítico al iniciar:\n{str(ex)}", color="red", size=14))
         page.update()
 
-# Esta línea es obligatoria para que la app no se cierre sola
 ft.app(target=main)
