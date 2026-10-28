@@ -55,7 +55,6 @@ def main(page: ft.Page):
                 porcentaje REAL DEFAULT 0.0
             )
         """)
-        # Asegurar columna porcentaje si la tabla ya existía
         try:
             cursor.execute("ALTER TABLE categorias ADD COLUMN porcentaje REAL DEFAULT 0.0")
         except sqlite3.OperationalError:
@@ -98,7 +97,7 @@ def main(page: ft.Page):
         cursor.execute("SELECT nombre, porcentaje FROM categorias WHERE tipo = ?", (tipo_cat,))
         res = cursor.fetchall()
         conn.close()
-        return res # Retorna lista de tuplas (nombre, porcentaje)
+        return res
 
     def actualizar_dashboard():
         registrar_actividad()
@@ -262,11 +261,10 @@ def main(page: ft.Page):
     input_efectivo = ft.TextField(label="Efectivo Recibido ($)", prefix_text="$ ", keyboard_type=ft.KeyboardType.NUMBER, bgcolor=C_CARD, border_color="transparent", border_radius=12)
     cat_dropdown = ft.Dropdown(label="Categoría", bgcolor=C_CARD, border_color="transparent", border_radius=12)
     
-    # Diccionario temporal para guardar los porcentajes de cada categoría cargada
-_cat_porcentajes = {}
+    _cat_porcentajes = {}
 
     def actualizar_form_registro(e=None):
-        global _cat_porcentajes
+        nonlocal _cat_porcentajes
         _cat_porcentajes = {}
         
         if tipo_registro.value == "Ingreso":
@@ -305,7 +303,6 @@ _cat_porcentajes = {}
         categoria_seleccionada = cat_dropdown.value
 
         if tipo == "Ingreso":
-            # Buscar el porcentaje fijo configurado para esta categoría específica
             pct = _cat_porcentajes.get(categoria_seleccionada, 0.0)
             descuento = (mt + ef) * (pct / 100.0)
             neta = (mt + ef) - descuento
@@ -344,13 +341,13 @@ _cat_porcentajes = {}
         ], scroll=ft.ScrollMode.AUTO)
     )
 
-    # --- 4. AJUSTES (CON CONFIGURACIÓN DE PORCENTAJE) ---
+    # --- 4. AJUSTES ---
     input_n_cat = ft.TextField(label="Nombre de categoría", expand=True, bgcolor=C_CARD, border_color="transparent", border_radius=12)
     tipo_n_cat = ft.Dropdown(
         options=[ft.dropdown.Option("Ingreso"), ft.dropdown.Option("Gasto")], 
         value="Ingreso", width=120, bgcolor=C_CARD, border_color="transparent", border_radius=12
     )
-    input_pct_cat = ft.TextField(label="% Descuento", value="0.0", width=100, keyboard_type=ft.KeyboardType.NUMBER, bgcolor=C_CARD, border_color="transparent", border_radius=12)
+    input_pct_cat = ft.TextField(label="% Descuento fijo", value="0.0", width=120, keyboard_type=ft.KeyboardType.NUMBER, bgcolor=C_CARD, border_color="transparent", border_radius=12)
 
     def actualizar_form_ajustes(e=None):
         if tipo_n_cat.value == "Ingreso":
@@ -478,7 +475,6 @@ _cat_porcentajes = {}
     ultimo_uso = page.client_storage.get("last_active") or 0
     tiempo_actual = time.time()
     
-    # Lógica de los 5 minutos (300 segundos)
     if (tiempo_actual - ultimo_uso) < 300:
         page.go("/")
     else:
