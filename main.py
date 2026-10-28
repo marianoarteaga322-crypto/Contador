@@ -116,6 +116,49 @@ def main(page: ft.Page):
         txt_saldo_principal.value = f"${t_net:,.2f}"
         page.update()
 
+    # --- DIÁLOGO DE DESGLOSE DE INGRESOS ---
+    def mostrar_desglose_ingresos(e):
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT SUM(monto_total), SUM(efectivo) FROM movimientos WHERE tipo = 'Ingreso'")
+        res = cursor.fetchone()
+        conn.close()
+        
+        t_digital = res[0] or 0.0
+        t_efectivo = res[1] or 0.0
+        t_total = t_digital + t_efectivo
+
+        page.dialog = ft.AlertDialog(
+            bgcolor=C_CARD,
+            title=ft.Text("Desglose de Ingresos", color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD),
+            content=ft.Column([
+                ft.ListTile(
+                    leading=ft.Icon(ft.icons.PHONE_ANDROID, color=C_BLUE),
+                    title=ft.Text("Ganancia por Apps (Digital)", color=C_TEXT_SEC, size=13),
+                    subtitle=ft.Text(f"${t_digital:,.2f}", color=C_TEXT_MAIN, size=18, weight=ft.FontWeight.BOLD)
+                ),
+                ft.ListTile(
+                    leading=ft.Icon(ft.icons.ATTACH_MONEY, color=C_GREEN),
+                    title=ft.Text("Efectivo Recibido en Mano", color=C_TEXT_SEC, size=13),
+                    subtitle=ft.Text(f"${t_efectivo:,.2f}", color=C_TEXT_MAIN, size=18, weight=ft.FontWeight.BOLD)
+                ),
+                ft.Divider(color="#334155"),
+                ft.Row([
+                    ft.Text("Total Ingresos:", color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD),
+                    ft.Text(f"${t_total:,.2f}", color=C_GREEN, weight=ft.FontWeight.BOLD, size=16)
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+            ], tight=True),
+            actions=[
+                ft.TextButton("Cerrar", on_click=lambda e: cerrar_dialogo())
+            ]
+        )
+        page.dialog.open = True
+        page.update()
+
+    def cerrar_dialogo():
+        page.dialog.open = False
+        page.update()
+
     def borrar_movimiento(mov_id):
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
@@ -206,30 +249,34 @@ def main(page: ft.Page):
         page.bottom_sheet.open = False
         page.update()
 
-# --- PANTALLA 1: BIENVENIDA ---
+    # --- 1. BIENVENIDA ---
     vista_bienvenida = ft.Container(
         expand=True,
-        gradient=ft.LinearGradient(
-            begin=ft.alignment.top_left, end=ft.alignment.bottom_right,
-            colors=[C_PURPLE, C_BG, C_BG]
-        ),
+        gradient=ft.LinearGradient(begin=ft.alignment.top_left, end=ft.alignment.bottom_right, colors=[C_PURPLE, C_BG, C_BG]),
         content=ft.Column([
             ft.Container(height=100),
             ft.Icon(ft.icons.MULTILINE_CHART, size=100, color=C_BLUE),
             ft.Text("Control\nFinanciero", size=40, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN, text_align=ft.TextAlign.CENTER),
             ft.Text("Gestiona tus repartos de forma inteligente.", size=16, color=C_TEXT_SEC, text_align=ft.TextAlign.CENTER),
             ft.Container(expand=True),
-            ft.ElevatedButton(
-                "Comenzar", 
-                bgcolor=C_BLUE, color="#FFFFFF", width=300, height=55,
-                style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=15)),
-                on_click=lambda e: iniciar_app()
-            ),
+            ft.ElevatedButton("Comenzar", bgcolor=C_BLUE, color="#FFFFFF", width=300, height=55, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=15)), on_click=lambda e: page.go("/")),
             ft.Container(height=40)
         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER)
     )
 
     # --- 2. DASHBOARD ---
+    # Tarjeta de ingresos interactiva con GestureDetector
+    card_ingresos = ft.GestureDetector(
+        on_tap=mostrar_desglose_ingresos,
+        content=ft.Container(
+            content=ft.Row([
+                ft.Container(content=ft.Icon(ft.icons.ARROW_UPWARD, color=C_GREEN, size=16), bgcolor="#064E3B", padding=8, border_radius=10),
+                ft.Column([ft.Text("Ingresos", size=12, color=C_TEXT_SEC), txt_ingresos_top], spacing=0)
+            ]),
+            bgcolor=C_CARD, padding=15, border_radius=15, expand=True
+        )
+    )
+
     vista_dashboard = ft.Container(
         expand=True,
         gradient=ft.LinearGradient(begin=ft.alignment.top_center, end=ft.alignment.center, colors=["#1E1B4B", C_BG]),
@@ -244,10 +291,7 @@ def main(page: ft.Page):
             ft.Container(content=txt_saldo_principal, alignment=ft.alignment.center),
             ft.Container(height=20),
             ft.Row([
-                ft.Container(content=ft.Row([
-                    ft.Container(content=ft.Icon(ft.icons.ARROW_UPWARD, color=C_GREEN, size=16), bgcolor="#064E3B", padding=8, border_radius=10),
-                    ft.Column([ft.Text("Ingresos", size=12, color=C_TEXT_SEC), txt_ingresos_top], spacing=0)
-                ]), bgcolor=C_CARD, padding=15, border_radius=15, expand=True),
+                card_ingresos,
                 ft.Container(content=ft.Row([
                     ft.Container(content=ft.Icon(ft.icons.ARROW_DOWNWARD, color=C_RED, size=16), bgcolor="#450A0A", padding=8, border_radius=10),
                     ft.Column([ft.Text("Gastos", size=12, color=C_TEXT_SEC), txt_gastos_top], spacing=0)
@@ -427,7 +471,7 @@ def main(page: ft.Page):
         ])
     )
 
-    # --- NAVEGACIÓN Y ENRUTAMIENTO ---
+    # --- NAVEGACIÓN Y ENRUTAMIENTO (Control estricto de los 5 minutos) ---
     nav_bar = ft.NavigationBar(
         bgcolor=C_BG, selected_index=0,
         destinations=[
@@ -449,21 +493,20 @@ def main(page: ft.Page):
         registrar_actividad()
         page.views.clear()
         
-        page.views.append(
-            ft.View(
-                "/",
-                [ft.SafeArea(contenedor_base, expand=True)],
-                navigation_bar=nav_bar,
-                floating_action_button=fab,
-                padding=0, bgcolor=C_BG
-            )
-        )
-        
         if page.route == "/welcome":
             page.views.append(ft.View("/welcome", [ft.SafeArea(vista_bienvenida, expand=True)], padding=0, bgcolor=C_BG))
         elif page.route == "/registro":
             page.views.append(ft.View("/registro", [ft.SafeArea(vista_registro, expand=True)], padding=0, bgcolor=C_BG))
-            
+        else:
+            page.views.append(
+                ft.View(
+                    "/",
+                    [ft.SafeArea(contenedor_base, expand=True)],
+                    navigation_bar=nav_bar,
+                    floating_action_button=fab,
+                    padding=0, bgcolor=C_BG
+                )
+            )
         page.update()
 
     def view_pop(view):
@@ -473,17 +516,18 @@ def main(page: ft.Page):
     page.on_route_change = route_change
     page.on_view_pop = view_pop
 
-    # Inicialización
+    # Inicialización de datos
     actualizar_dashboard()
     cargar_historial()
     refrescar_cats()
     actualizar_form_ajustes()
     cambiar_tab(0)
     
+    # Verificación estricta de inactividad (5 minutos = 300 segundos)
     ultimo_uso = page.client_storage.get("last_active") or 0
     tiempo_actual = time.time()
     
-    if (tiempo_actual - ultimo_uso) < 300:
+    if (tiempo_actual - ultimo_uso) < 300 and ultimo_uso > 0:
         page.go("/")
     else:
         page.go("/welcome")
