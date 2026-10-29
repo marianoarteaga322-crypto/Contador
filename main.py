@@ -191,21 +191,27 @@ def main(page: ft.Page):
             for row in rows:
                 mov_id, fecha, categoria, neta, tipo = row
                 es_ingreso = (tipo == "Ingreso")
+                
+                # Diseño en proporción equilibrada (Icono + Textos a la izquierda / Monto + Basura alineados ordenadamente)
                 lista_historial.controls.append(
                     ft.Container(
-                        content=ft.ListTile(
-                            leading=ft.Container(
-                                content=ft.Icon(ft.icons.CHECK_CIRCLE if es_ingreso else ft.icons.REMOVE_CIRCLE, color=C_GREEN if es_ingreso else C_RED), 
-                                bgcolor="#064E3B" if es_ingreso else "#450A0A", padding=10, border_radius=12
-                            ),
-                            title=ft.Text(categoria, color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD),
-                            subtitle=ft.Text(f"{fecha}", color=C_TEXT_SEC, size=12),
-                            trailing=ft.Column([
-                                ft.Text(f"{'+' if es_ingreso else '-'} ${abs(neta):,.2f}", color=C_GREEN if es_ingreso else C_RED, weight=ft.FontWeight.BOLD),
-                                ft.IconButton(icon=ft.icons.DELETE, icon_color=C_RED, icon_size=16, on_click=lambda e, m=mov_id: borrar_movimiento(m))
-                            ], alignment=ft.MainAxisAlignment.CENTER, spacing=0)
-                        ),
-                        bgcolor=C_CARD, border_radius=15
+                        content=ft.Row([
+                            ft.Row([
+                                ft.Container(
+                                    content=ft.Icon(ft.icons.CHECK_CIRCLE if es_ingreso else ft.icons.REMOVE_CIRCLE, color=C_GREEN if es_ingreso else C_RED, size=20), 
+                                    bgcolor="#064E3B" if es_ingreso else "#450A0A", padding=10, border_radius=12
+                                ),
+                                ft.Column([
+                                    ft.Text(categoria, color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD, size=15),
+                                    ft.Text(f"{fecha}", color=C_TEXT_SEC, size=11)
+                                ], spacing=2, alignment=ft.MainAxisAlignment.CENTER)
+                            ], spacing=12),
+                            ft.Row([
+                                ft.Text(f"{'+' if es_ingreso else '-'} ${abs(neta):,.2f}", color=C_GREEN if es_ingreso else C_RED, weight=ft.FontWeight.BOLD, size=14),
+                                ft.IconButton(icon=ft.icons.DELETE_OUTLINE, icon_color=C_RED, icon_size=18, tooltip="Eliminar", on_click=lambda e, m=mov_id: borrar_movimiento(m))
+                            ], spacing=5)
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        bgcolor=C_CARD, padding=12, border_radius=15
                     )
                 )
         page.update()
@@ -259,13 +265,12 @@ def main(page: ft.Page):
             ft.Text("Control\nFinanciero", size=40, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN, text_align=ft.TextAlign.CENTER),
             ft.Text("Gestiona tus repartos de forma inteligente.", size=16, color=C_TEXT_SEC, text_align=ft.TextAlign.CENTER),
             ft.Container(expand=True),
-            ft.ElevatedButton("Comenzar", bgcolor=C_BLUE, color="#FFFFFF", width=300, height=55, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=15)), on_click=lambda e: page.go("/")),
+            ft.ElevatedButton("Comenzar", bgcolor=C_BLUE, color="#FFFFFF", width=300, height=55, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=15)), on_click=lambda e: page.go("/dashboard")),
             ft.Container(height=40)
         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER)
     )
 
     # --- 2. DASHBOARD ---
-    # Tarjeta de ingresos interactiva con GestureDetector
     card_ingresos = ft.GestureDetector(
         on_tap=mostrar_desglose_ingresos,
         content=ft.Container(
@@ -376,13 +381,13 @@ def main(page: ft.Page):
         actualizar_dashboard()
         cargar_historial()
         mostrar_notificacion("¡Registro guardado con éxito!", C_GREEN)
-        page.go("/")
+        page.go("/dashboard")
 
     vista_registro = ft.Container(
         expand=True, bgcolor=C_BG, padding=20,
         content=ft.Column([
             ft.Row([
-                ft.IconButton(ft.icons.ARROW_BACK_IOS, icon_color=C_TEXT_MAIN, on_click=lambda e: page.go("/")),
+                ft.IconButton(ft.icons.ARROW_BACK_IOS, icon_color=C_TEXT_MAIN, on_click=lambda e: page.go("/dashboard")),
                 ft.Text("Nuevo Registro", size=24, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN)
             ]),
             ft.Text("Selecciona el tipo de movimiento y categoría.", color=C_TEXT_SEC),
@@ -471,7 +476,7 @@ def main(page: ft.Page):
         ])
     )
 
-    # --- NAVEGACIÓN Y ENRUTAMIENTO (Control estricto de los 5 minutos) ---
+    # --- NAVEGACIÓN Y ENRUTAMIENTO NATIVO ---
     nav_bar = ft.NavigationBar(
         bgcolor=C_BG, selected_index=0,
         destinations=[
@@ -493,20 +498,22 @@ def main(page: ft.Page):
         registrar_actividad()
         page.views.clear()
         
-        if page.route == "/welcome":
-            page.views.append(ft.View("/welcome", [ft.SafeArea(vista_bienvenida, expand=True)], padding=0, bgcolor=C_BG))
-        elif page.route == "/registro":
-            page.views.append(ft.View("/registro", [ft.SafeArea(vista_registro, expand=True)], padding=0, bgcolor=C_BG))
-        else:
+        if page.route == "/dashboard":
             page.views.append(
                 ft.View(
-                    "/",
+                    "/dashboard",
                     [ft.SafeArea(contenedor_base, expand=True)],
                     navigation_bar=nav_bar,
                     floating_action_button=fab,
                     padding=0, bgcolor=C_BG
                 )
             )
+        elif page.route == "/registro":
+            page.views.append(ft.View("/registro", [ft.SafeArea(vista_registro, expand=True)], padding=0, bgcolor=C_BG))
+        else:
+            # Por defecto la pantalla de bienvenida obligatoria al iniciar
+            page.views.append(ft.View("/", [ft.SafeArea(vista_bienvenida, expand=True)], padding=0, bgcolor=C_BG))
+            
         page.update()
 
     def view_pop(view):
@@ -523,13 +530,13 @@ def main(page: ft.Page):
     actualizar_form_ajustes()
     cambiar_tab(0)
     
-    # Verificación estricta de inactividad (5 minutos = 300 segundos)
+    # Lógica de inactividad de 5 minutos (300 segundos)
     ultimo_uso = page.client_storage.get("last_active") or 0
     tiempo_actual = time.time()
     
     if (tiempo_actual - ultimo_uso) < 300 and ultimo_uso > 0:
-        page.go("/")
+        page.go("/dashboard")
     else:
-        page.go("/welcome")
+        page.go("/")
 
 ft.app(target=main)
