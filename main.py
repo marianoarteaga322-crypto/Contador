@@ -81,16 +81,10 @@ def main(page: ft.Page):
     txt_ingresos_top = ft.Text("$0.00", size=18, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN)
     txt_gastos_top = ft.Text("$0.00", size=18, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN)
     
-    # Widgets para la pestaña de Resumen y Gráfica
     txt_resumen_ingresos = ft.Text("$0.00", size=16, color=C_GREEN, weight=ft.FontWeight.BOLD)
     txt_resumen_gastos = ft.Text("$0.00", size=16, color=C_RED, weight=ft.FontWeight.BOLD)
     txt_resumen_retiros = ft.Text("$0.00", size=16, color=C_BLUE, weight=ft.FontWeight.BOLD)
     txt_resumen_neto = ft.Text("$0.00", size=22, color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD)
-    
-    # Barras de la gráfica proporcional
-    barra_ingresos = ft.Container(bgcolor=C_GREEN, height=14, border_radius=7, width=0)
-    barra_gastos = ft.Container(bgcolor=C_RED, height=14, border_radius=7, width=0)
-    barra_retiros = ft.Container(bgcolor=C_BLUE, height=14, border_radius=7, width=0)
 
     lista_historial = ft.Column(spacing=10, scroll=ft.ScrollMode.AUTO)
     lista_categorias = ft.Column(spacing=5, scroll=ft.ScrollMode.AUTO)
@@ -130,17 +124,10 @@ def main(page: ft.Page):
         txt_gastos_top.value = f"${t_gas:,.2f}"
         txt_saldo_principal.value = f"${t_net:,.2f}"
 
-        # Actualizar textos de la pestaña Resumen
         txt_resumen_ingresos.value = f"${t_ing:,.2f}"
         txt_resumen_gastos.value = f"${t_gas:,.2f}"
         txt_resumen_retiros.value = f"${t_ret:,.2f}"
         txt_resumen_neto.value = f"${t_net:,.2f}"
-
-        # Actualizar gráfica proporcional (anchos basados en proporciones seguras)
-        max_val = max(t_ing, t_gas, t_ret, 1.0)
-        barra_ingresos.width = min(max((t_ing / max_val) * 280, 5), 280)
-        barra_gastos.width = min(max((t_gas / max_val) * 280, 5), 280)
-        barra_retiros.width = min(max((t_ret / max_val) * 280, 5), 280)
 
         page.update()
 
@@ -151,7 +138,6 @@ def main(page: ft.Page):
         cursor.execute("SELECT SUM(monto_total), SUM(efectivo) FROM movimientos WHERE tipo = 'Ingreso'")
         res = cursor.fetchone()
         
-        # Sumar también los retiros al efectivo disponible
         cursor.execute("SELECT SUM(monto_total) FROM movimientos WHERE tipo = 'Retiro'")
         t_ret = cursor.fetchone()[0] or 0.0
         conn.close()
@@ -363,7 +349,7 @@ def main(page: ft.Page):
         ])
     )
 
-    # --- 3. VISTA DE RESUMEN CON GRÁFICA PROPORCIONAL ---
+    # --- 3. VISTA DE RESUMEN ---
     vista_resumen = ft.Container(
         expand=True,
         gradient=ft.LinearGradient(begin=ft.alignment.top_center, end=ft.alignment.center, colors=["#1E1B4B", C_BG]),
@@ -371,38 +357,21 @@ def main(page: ft.Page):
         content=ft.Column([
             ft.Container(height=30),
             ft.Text("Resumen Financiero", size=26, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN),
-            ft.Text("Gráfica y balance general", color=C_TEXT_SEC, size=14),
-            ft.Container(height=15),
-            
-            # Gráfica Visual de Barras Proporcionales
+            ft.Text("Balance general de operaciones", color=C_TEXT_SEC, size=14),
+            ft.Container(height=20),
             ft.Card(
                 color=C_CARD,
                 content=ft.Container(
                     padding=20,
                     content=ft.Column([
-                        ft.Text("Gráfica de Movimientos", size=14, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN),
-                        ft.Container(height=10),
-                        ft.Row([ft.Text("Ingresos", size=12, color=C_GREEN), txt_resumen_ingresos], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                        barra_ingresos,
-                        ft.Container(height=5),
-                        ft.Row([ft.Text("Gastos", size=12, color=C_RED), txt_resumen_gastos], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                        barra_gastos,
-                        ft.Container(height=5),
-                        ft.Row([ft.Text("Retiros", size=12, color=C_BLUE), txt_resumen_retiros], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                        barra_retiros,
-                    ])
-                )
-            ),
-            ft.Container(height=10),
-            ft.Card(
-                color=C_CARD,
-                content=ft.Container(
-                    padding=20,
-                    content=ft.Column([
-                        ft.Text("ESTADÍSTICAS DETALLADAS", size=12, color=C_PURPLE, weight=ft.FontWeight.BOLD),
+                        ft.Text("ESTADÍSTICAS GENERALES", size=12, color=C_BLUE, weight=ft.FontWeight.BOLD),
+                        ft.Divider(color="#334155"),
+                        ft.Row([ft.Text("Total Ingresos:", color=C_TEXT_SEC), txt_resumen_ingresos], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Row([ft.Text("Total Gastos:", color=C_TEXT_SEC), txt_resumen_gastos], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Row([ft.Text("Total Retiros:", color=C_TEXT_SEC), txt_resumen_retiros], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Divider(color="#334155"),
                         ft.Row([ft.Text("Balance Neto Global:", color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD), txt_resumen_neto], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                    ], spacing=10)
+                    ], spacing=12)
                 )
             ),
         ], scroll=ft.ScrollMode.AUTO)
@@ -441,154 +410,4 @@ def main(page: ft.Page):
         else: # Retiro
             input_efectivo.visible = False
             input_efectivo.value = "0"
-            input_monto.label = "Monto del Retiro ($)"
-            cats = obtener_categorias_con_porcentaje("Retiro")
-            cat_dropdown.options = [ft.dropdown.Option(nombre) for nombre, _ in cats]
-        
-        if cat_dropdown.options:
-            cat_dropdown.value = cat_dropdown.options[0].key
-        page.update()
-
-    tipo_registro.on_change = actualizar_form_registro
-
-    def guardar_cierre(e):
-        try:
-            mt = float(input_monto.value or 0)
-            ef = float(input_efectivo.value or 0)
-        except ValueError:
-            mostrar_notificacion("Ingresa números válidos", C_RED)
-            return
-
-        fecha = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-        tipo = tipo_registro.value
-        categoria_seleccionada = cat_dropdown.value
-
-        if tipo == "Ingreso":
-            if mt == 0 and ef > 0: mt = ef
-            pct = _cat_porcentajes.get(categoria_seleccionada, 0.0)
-            descuento = mt * (pct / 100.0)
-            neta = mt - descuento
-            gastos_val = 0
-        elif tipo == "Gasto":
-            if mt == 0 and ef > 0: mt = ef
-            descuento = 0
-            neta = -mt 
-            gastos_val = mt
-            mt = 0
-        else: # Retiro (Al retirar, el dinero pasa a efectivo y no reduce la ganancia neta global, solo actúa como un traspaso)
-            descuento = 0
-            neta = 0
-            gastos_val = 0
-
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO movimientos (fecha, tipo, categoria, monto_total, efectivo, descuento, gastos, ganancia_neta) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                       (fecha, tipo, categoria_seleccionada, mt, ef, descuento, gastos_val, neta))
-        conn.commit()
-        conn.close()
-
-        input_monto.value, input_efectivo.value = "", ""
-        actualizar_dashboard()
-        cargar_historial()
-        mostrar_notificacion("¡Registro guardado con éxito!", C_GREEN)
-        page.go("/dashboard")
-
-    vista_registro = ft.Container(
-        expand=True, bgcolor=C_BG, padding=20,
-        content=ft.Column([
-            ft.Row([
-                ft.IconButton(ft.icons.ARROW_BACK_IOS, icon_color=C_TEXT_MAIN, on_click=lambda e: page.go("/dashboard")),
-                ft.Text("Nuevo Registro", size=24, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN)
-            ]),
-            ft.Text("Selecciona el tipo de movimiento y categoría.", color=C_TEXT_SEC),
-            ft.Container(height=15),
-            tipo_registro, input_monto, input_efectivo, cat_dropdown,
-            ft.Container(height=20),
-            ft.ElevatedButton("Guardar Registro", bgcolor=C_BLUE, color="#FFFFFF", width=float('inf'), height=55, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=15)), on_click=guardar_cierre)
-        ], scroll=ft.ScrollMode.AUTO)
-    )
-
-    # --- 5. AJUSTES ---
-    input_n_cat = ft.TextField(label="Nombre de categoría", expand=True, bgcolor=C_CARD, border_color="transparent", border_radius=12)
-    tipo_n_cat = ft.Dropdown(
-        options=[ft.dropdown.Option("Ingreso"), ft.dropdown.Option("Gasto"), ft.dropdown.Option("Retiro")], 
-        value="Ingreso", width=120, bgcolor=C_CARD, border_color="transparent", border_radius=12
-    )
-    input_pct_cat = ft.TextField(label="% Descuento fijo", value="0.0", width=120, keyboard_type=ft.KeyboardType.NUMBER, bgcolor=C_CARD, border_color="transparent", border_radius=12)
-
-    def actualizar_form_ajustes(e=None):
-        if tipo_n_cat.value == "Ingreso":
-            input_pct_cat.visible = True
-        else:
-            input_pct_cat.visible = False
-            input_pct_cat.value = "0.0"
-        page.update()
-
-    tipo_n_cat.on_change = actualizar_form_ajustes
-
-    def refrescar_cats():
-        lista_categorias.controls.clear()
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, tipo, nombre, porcentaje FROM categorias")
-        for r in cursor.fetchall():
-            sub_text = f"{r[1]} • Descuento: {r[3]}%" if r[1] == "Ingreso" else r[1]
-            lista_categorias.controls.append(
-                ft.ListTile(
-                    title=ft.Text(r[2], color=C_TEXT_MAIN), 
-                    subtitle=ft.Text(sub_text, color=C_TEXT_SEC),
-                    trailing=ft.IconButton(ft.icons.DELETE, icon_color=C_RED, on_click=lambda e, cid=r[0]: borrar_cat(cid))
-                )
-            )
-        conn.close()
-        actualizar_form_registro()
-
-    def borrar_cat(cid):
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM categorias WHERE id = ?", (cid,))
-        conn.commit()
-        conn.close()
-        refrescar_cats()
-
-    def agregar_cat(e):
-        if not input_n_cat.value: return
-        try:
-            pct_val = float(input_pct_cat.value) if tipo_n_cat.value == "Ingreso" else 0.0
-        except ValueError:
-            pct_val = 0.0
-
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO categorias (tipo, nombre, porcentaje) VALUES (?, ?, ?)", (tipo_n_cat.value, input_n_cat.value, pct_val))
-        conn.commit()
-        conn.close()
-        
-        input_n_cat.value = ""
-        input_pct_cat.value = "0.0"
-        refrescar_cats()
-        mostrar_notificacion("Categoría agregada con éxito", C_GREEN)
-
-    vista_ajustes = ft.Container(
-        expand=True, bgcolor=C_BG, padding=20,
-        content=ft.Column([
-            ft.Container(height=30),
-            ft.Text("Ajustes", size=28, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN),
-            ft.Text("Administra tus categorías y porcentajes", color=C_TEXT_SEC),
-            ft.Container(height=20),
-            ft.Row([tipo_n_cat, input_n_cat]),
-            input_pct_cat,
-            ft.Container(height=5),
-            ft.ElevatedButton("Agregar Categoría", bgcolor=C_PURPLE, color="#FFFFFF", width=float('inf'), height=50, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12)), on_click=agregar_cat),
-            ft.Container(height=20),
-            ft.Text("Categorías Actuales", weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN),
-            ft.Container(content=lista_categorias, expand=True)
-        ])
-    )
-
-    # --- NAVEGACIÓN Y ENRUTAMIENTO CON 3 PESTAÑAS ---
-    nav_bar = ft.NavigationBar(
-        bgcolor=C_BG, selected_index=0,
-        destinations=[
-            ft.NavigationBarDestination(icon=ft.icons.HOME_OUTLINED, selected_icon=ft.icons.HOME, label="Inicio"),
-            ft.NavigationBarDestination(icon=ft.icons.BAR_CHART_OUTLINED, selected_icon=
+            input_monto.label
