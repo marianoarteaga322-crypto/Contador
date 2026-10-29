@@ -124,7 +124,7 @@ def main(page: ft.Page):
             cursor.execute("SELECT SUM(ganancia_neta) FROM movimientos")
             t_net_ing = cursor.fetchone()[0] or 0.0
 
-            # Saldo Neto Disponible real = Ingresos Netos - Gastos - Retiros (los retiros salen del saldo digital disponible)
+            # Saldo Neto Disponible real = Ingresos Netos - Gastos - Retiros
             t_net = t_net_ing - t_gas - t_ret
             
             conn.close()
@@ -247,7 +247,13 @@ def main(page: ft.Page):
                 )
             else:
                 for row in rows:
-                    mov_id, fecha, categoria, neta, tipo, monto_t = row
+                    mov_id = row[0]
+                    fecha = row[1] or ""
+                    categoria = row[2] or "General"
+                    neta = row[3] if len(row) > 3 and row[3] is not None else 0.0
+                    tipo = row[4] or "Ingreso"
+                    monto_t = row[5] if len(row) > 5 and row[5] is not None else 0.0
+
                     es_ingreso = (tipo == "Ingreso")
                     es_retiro = (tipo == "Retiro")
                     
@@ -255,7 +261,6 @@ def main(page: ft.Page):
                     icono_mov = ft.icons.SWAPS_ROUNDED if es_retiro else (ft.icons.CHECK_CIRCLE if es_ingreso else ft.icons.REMOVE_CIRCLE)
                     bg_icono = "#1E3A8A" if es_retiro else ("#064E3B" if es_ingreso else "#450A0A")
 
-                    # Mostrar formato correcto según el tipo de movimiento
                     if es_retiro:
                         texto_monto = f"⇄ ${monto_t:,.2f}"
                     elif es_ingreso:
