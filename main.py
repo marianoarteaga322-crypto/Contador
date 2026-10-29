@@ -86,7 +86,7 @@ def main(page: ft.Page):
     txt_resumen_retiros = ft.Text("$0.00", size=16, color=C_BLUE, weight=ft.FontWeight.BOLD)
     txt_resumen_neto = ft.Text("$0.00", size=22, color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD)
 
-    # Indicadores visuales de la gráfica
+    # Barras de la gráfica
     barra_ingresos = ft.Container(bgcolor=C_GREEN, height=10, border_radius=5, width=10)
     barra_gastos = ft.Container(bgcolor=C_RED, height=10, border_radius=5, width=10)
     barra_retiros = ft.Container(bgcolor=C_BLUE, height=10, border_radius=5, width=10)
@@ -258,7 +258,8 @@ def main(page: ft.Page):
                     es_retiro = (tipo == "Retiro")
                     
                     color_monto = C_GREEN if es_ingreso else (C_BLUE if es_retiro else C_RED)
-                    icono_mov = ft.icons.SWAPS_ROUNDED if es_retiro else (ft.icons.CHECK_CIRCLE if es_ingreso else ft.icons.REMOVE_CIRCLE)
+                    # Usamos SWAP_HORIZ que es un ícono seguro y estándar en Flet/Flutter
+                    icono_mov = ft.icons.SWAP_HORIZ if es_retiro else (ft.icons.CHECK_CIRCLE if es_ingreso else ft.icons.REMOVE_CIRCLE)
                     bg_icono = "#1E3A8A" if es_retiro else ("#064E3B" if es_ingreso else "#450A0A")
 
                     if es_retiro:
