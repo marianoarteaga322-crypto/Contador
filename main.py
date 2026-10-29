@@ -5,6 +5,7 @@ import os
 import time
 
 def main(page: ft.Page):
+    # Nombre de la app con Mayúsculas
     page.title = "Control Financiero"
     page.theme_mode = ft.ThemeMode.DARK
     page.bgcolor = "#0B0E17"
@@ -20,7 +21,8 @@ def main(page: ft.Page):
     C_TEXT_MAIN = "#F8FAFC"
     C_TEXT_SEC = "#64748B"
 
-    # --- RUTAS DE BASE DE DATOS ANDROID ---
+    # --- RUTAS DE BASE DE DATOS ANDROID (Persistencia) ---
+    # Al actualizar (sin desinstalar), los datos en esta ruta se mantienen a salvo.
     android_path = "/data/user/0/com.flet.contador/files"
     android_path_alt = "/data/data/com.flet.contador/files"
     
@@ -192,7 +194,6 @@ def main(page: ft.Page):
                 mov_id, fecha, categoria, neta, tipo = row
                 es_ingreso = (tipo == "Ingreso")
                 
-                # Diseño en proporción equilibrada (Icono + Textos a la izquierda / Monto + Basura alineados ordenadamente)
                 lista_historial.controls.append(
                     ft.Container(
                         content=ft.Row([
@@ -271,6 +272,7 @@ def main(page: ft.Page):
     )
 
     # --- 2. DASHBOARD ---
+    # Tarjeta de ingresos interactiva
     card_ingresos = ft.GestureDetector(
         on_tap=mostrar_desglose_ingresos,
         content=ft.Container(
@@ -278,8 +280,16 @@ def main(page: ft.Page):
                 ft.Container(content=ft.Icon(ft.icons.ARROW_UPWARD, color=C_GREEN, size=16), bgcolor="#064E3B", padding=8, border_radius=10),
                 ft.Column([ft.Text("Ingresos", size=12, color=C_TEXT_SEC), txt_ingresos_top], spacing=0)
             ]),
-            bgcolor=C_CARD, padding=15, border_radius=15, expand=True
+            bgcolor=C_CARD, padding=15, border_radius=15, expand=True # Expand hace que tome el 50%
         )
+    )
+
+    card_gastos = ft.Container(
+        content=ft.Row([
+            ft.Container(content=ft.Icon(ft.icons.ARROW_DOWNWARD, color=C_RED, size=16), bgcolor="#450A0A", padding=8, border_radius=10),
+            ft.Column([ft.Text("Gastos", size=12, color=C_TEXT_SEC), txt_gastos_top], spacing=0)
+        ]),
+        bgcolor=C_CARD, padding=15, border_radius=15, expand=True # Expand hace que tome el 50%
     )
 
     vista_dashboard = ft.Container(
@@ -295,13 +305,13 @@ def main(page: ft.Page):
             ft.Text("Saldo Neto Disponible", size=14, color=C_TEXT_SEC, text_align=ft.TextAlign.CENTER),
             ft.Container(content=txt_saldo_principal, alignment=ft.alignment.center),
             ft.Container(height=20),
+            
+            # FILA CON SIMETRÍA PERFECTA 50/50
             ft.Row([
                 card_ingresos,
-                ft.Container(content=ft.Row([
-                    ft.Container(content=ft.Icon(ft.icons.ARROW_DOWNWARD, color=C_RED, size=16), bgcolor="#450A0A", padding=8, border_radius=10),
-                    ft.Column([ft.Text("Gastos", size=12, color=C_TEXT_SEC), txt_gastos_top], spacing=0)
-                ]), bgcolor=C_CARD, padding=15, border_radius=15, expand=True)
-            ], spacing=15),
+                card_gastos
+            ], alignment=ft.MainAxisAlignment.CENTER, spacing=15),
+            
             ft.Container(height=20),
             ft.Text("Últimos Registros", size=16, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN),
             ft.Container(content=lista_historial, expand=True)
@@ -476,7 +486,7 @@ def main(page: ft.Page):
         ])
     )
 
-    # --- NAVEGACIÓN Y ENRUTAMIENTO NATIVO ---
+    # --- NAVEGACIÓN Y ENRUTAMIENTO ---
     nav_bar = ft.NavigationBar(
         bgcolor=C_BG, selected_index=0,
         destinations=[
@@ -498,7 +508,12 @@ def main(page: ft.Page):
         registrar_actividad()
         page.views.clear()
         
-        if page.route == "/dashboard":
+        # Lógica forzada de vistas
+        if page.route == "/welcome":
+            page.views.append(ft.View("/welcome", [ft.SafeArea(vista_bienvenida, expand=True)], padding=0, bgcolor=C_BG))
+        elif page.route == "/registro":
+            page.views.append(ft.View("/registro", [ft.SafeArea(vista_registro, expand=True)], padding=0, bgcolor=C_BG))
+        else:
             page.views.append(
                 ft.View(
                     "/dashboard",
@@ -508,18 +523,13 @@ def main(page: ft.Page):
                     padding=0, bgcolor=C_BG
                 )
             )
-        elif page.route == "/registro":
-            page.views.append(ft.View("/registro", [ft.SafeArea(vista_registro, expand=True)], padding=0, bgcolor=C_BG))
-        else:
-            # Por defecto la pantalla de bienvenida obligatoria al iniciar
-            page.views.append(ft.View("/", [ft.SafeArea(vista_bienvenida, expand=True)], padding=0, bgcolor=C_BG))
-            
         page.update()
 
     def view_pop(view):
         page.views.pop()
         page.go(page.views[-1].route)
 
+    # Enganchamos las rutas a la app
     page.on_route_change = route_change
     page.on_view_pop = view_pop
 
@@ -530,13 +540,13 @@ def main(page: ft.Page):
     actualizar_form_ajustes()
     cambiar_tab(0)
     
-    # Lógica de inactividad de 5 minutos (300 segundos)
+    # Comprobación inicial forzada de los 5 minutos
     ultimo_uso = page.client_storage.get("last_active") or 0
     tiempo_actual = time.time()
     
     if (tiempo_actual - ultimo_uso) < 300 and ultimo_uso > 0:
         page.go("/dashboard")
     else:
-        page.go("/")
+        page.go("/welcome")
 
 ft.app(target=main)
