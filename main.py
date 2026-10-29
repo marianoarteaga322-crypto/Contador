@@ -65,6 +65,7 @@ def main(page: ft.Page):
             default_cats = [
                 ("Ingreso", "Repartos App", 10.1),
                 ("Ingreso", "Propinas", 0.0),
+                ("Ingreso", "Saldo", 0.0),
                 ("Gasto", "Gasolina", 0.0),
                 ("Gasto", "Mantenimiento", 0.0),
                 ("Gasto", "Comida", 0.0),
@@ -121,14 +122,11 @@ def main(page: ft.Page):
             cursor.execute("SELECT SUM(monto_total) FROM movimientos WHERE tipo='Retiro'")
             t_ret = cursor.fetchone()[0] or 0.0
             
-            cursor.execute("SELECT SUM(ganancia_neta) FROM movimientos")
-            t_net_ing = cursor.fetchone()[0] or 0.0
-
-            # Saldo Neto Disponible real = Ingresos Netos - Gastos - Retiros
-            t_net = t_net_ing - t_gas - t_ret
-            
             conn.close()
 
+            # Saldo Neto Disponible real = Ingresos Brutos Totales - Gastos Totales - Retiros
+            t_net = t_ing - t_gas - t_ret
+            
             txt_ingresos_top.value = f"${t_ing:,.2f}"
             txt_gastos_top.value = f"${t_gas:,.2f}"
             txt_saldo_principal.value = f"${t_net:,.2f}"
@@ -147,6 +145,52 @@ def main(page: ft.Page):
             page.update()
         except Exception:
             pass
+
+    # --- DIÁLOGO DE EDICIÓN DE MOVIMIENTO ---
+    input_edit_monto = ft.TextField(label="Nuevo Monto ($)", prefix_text="$ ", keyboard_type=ft.KeyboardType.NUMBER, bgcolor=C_CARD, border_color="transparent", border_radius=12)
+
+    def abrir_editar_movimiento(mov_id, monto_actual):
+        input_edit_monto.value = str(monto_actual)
+
+        def guardar_cambio(e):
+            try:
+                nuevo_monto = float(input_edit_monto.value or 0)
+            except ValueError:
+                mostrar_notificacion("Ingresa un número válido", C_RED)
+                return
+
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT tipo FROM movimientos WHERE id = ?", (mov_id,))
+            row = cursor.fetchone()
+            if row:
+                tipo_mov = row[0]
+                if tipo_mov == "Gasto":
+                    cursor.execute("UPDATE movimientos SET monto_total = 0, gastos = ?, ganancia_neta = ? WHERE id = ?", (nuevo_monto, -nuevo_monto, mov_id))
+                elif tipo_mov == "Retiro":
+                    cursor.execute("UPDATE movimientos SET monto_total = ? WHERE id = ?", (nuevo_monto, mov_id))
+                else: # Ingreso
+                    cursor.execute("UPDATE movimientos SET monto_total = ?, ganancia_neta = ? WHERE id = ?", (nuevo_monto, nuevo_monto, mov_id))
+            conn.commit()
+            conn.close()
+
+            page.dialog.open = False
+            page.update()
+            actualizar_dashboard()
+            cargar_historial()
+            mostrar_notificacion("¡Movimiento actualizado!", C_GREEN)
+
+        page.dialog = ft.AlertDialog(
+            bgcolor=C_CARD,
+            title=ft.Text("Editar Movimiento", color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD),
+            content=ft.Column([input_edit_monto], tight=True),
+            actions=[
+                ft.TextButton("Cancelar", on_click=lambda e: cerrar_dialogo()),
+                ft.ElevatedButton("Guardar", bgcolor=C_BLUE, color="#FFFFFF", on_click=guardar_cambio)
+            ]
+        )
+        page.dialog.open = True
+        page.update()
 
     # --- DIÁLOGOS DE DESGLOSE ---
     def mostrar_desglose_ingresos(e):
@@ -231,7 +275,7 @@ def main(page: ft.Page):
             lista_historial.controls.clear()
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
-            cursor.execute("SELECT id, fecha, categoria, ganancia_neta, tipo, monto_total FROM movimientos ORDER BY id DESC LIMIT 30")
+            cursor.execute("SELECT id, fecha, categoria, ganancia_neta, tipo, monto_total, gastos FROM movimientos ORDER BY id DESC LIMIT 30")
             rows = cursor.fetchall()
             conn.close()
 
@@ -250,24 +294,27 @@ def main(page: ft.Page):
                     mov_id = row[0]
                     fecha = row[1] or ""
                     categoria = row[2] or "General"
-                    neta = row[3] if len(row) > 3 and row[3] is not None else 0.0
+                    neta = row[3] if row[3] is not None else 0.0
                     tipo = row[4] or "Ingreso"
-                    monto_t = row[5] if len(row) > 5 and row[5] is not None else 0.0
+                    monto_t = row[5] if row[5] is not None else 0.0
+                    gasto_t = row[6] if row[6] is not None else 0.0
 
                     es_ingreso = (tipo == "Ingreso")
                     es_retiro = (tipo == "Retiro")
                     
                     color_monto = C_GREEN if es_ingreso else (C_BLUE if es_retiro else C_RED)
-                    # Usamos SWAP_HORIZ que es un ícono seguro y estándar en Flet/Flutter
                     icono_mov = ft.icons.SWAP_HORIZ if es_retiro else (ft.icons.CHECK_CIRCLE if es_ingreso else ft.icons.REMOVE_CIRCLE)
                     bg_icono = "#1E3A8A" if es_retiro else ("#064E3B" if es_ingreso else "#450A0A")
 
                     if es_retiro:
                         texto_monto = f"⇄ ${monto_t:,.2f}"
+                        val_para_editar = monto_t
                     elif es_ingreso:
-                        texto_monto = f"+ ${neta:,.2f}"
+                        texto_monto = f"+ ${monto_t if monto_t > 0 else neta:,.2f}"
+                        val_para_editar = monto_t if monto_t > 0 else neta
                     else:
-                        texto_monto = f"- ${abs(neta):,.2f}"
+                        texto_monto = f"- ${abs(gasto_t if gasto_t > 0 else neta):,.2f}"
+                        val_para_editar = abs(gasto_t if gasto_t > 0 else neta)
 
                     lista_historial.controls.append(
                         ft.Container(
@@ -283,9 +330,10 @@ def main(page: ft.Page):
                                     ], spacing=2, alignment=ft.MainAxisAlignment.CENTER)
                                 ], spacing=12),
                                 ft.Row([
-                                    ft.Text(texto_monto, color=color_monto, weight=ft.FontWeight.BOLD, size=14),
-                                    ft.IconButton(icon=ft.icons.DELETE_OUTLINE, icon_color=C_RED, icon_size=18, tooltip="Eliminar", on_click=lambda e, m=mov_id: borrar_movimiento(m))
-                                ], spacing=5)
+                                    ft.Text(texto_monto, color=color_monto, weight=ft.FontWeight.BOLD, size=13),
+                                    ft.IconButton(icon=ft.icons.EDIT_OUTLINED, icon_color=C_BLUE, icon_size=16, tooltip="Editar", on_click=lambda e, m=mov_id, val=val_para_editar: abrir_editar_movimiento(m, val)),
+                                    ft.IconButton(icon=ft.icons.DELETE_OUTLINE, icon_color=C_RED, icon_size=16, tooltip="Eliminar", on_click=lambda e, m=mov_id: borrar_movimiento(m))
+                                ], spacing=2)
                             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                             bgcolor=C_CARD, padding=12, border_radius=15
                         )
