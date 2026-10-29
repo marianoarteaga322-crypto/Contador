@@ -29,10 +29,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install flet==0.23.2
 
-      # AQUÍ ESTÁ LA MAGIA DEL NOMBRE OFICIAL Y LA IDENTIDAD NUEVA
       - name: Build APK with Flet
         run: flet build apk --product "ConFin" --org com.mariano --project control
 
