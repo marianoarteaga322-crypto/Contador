@@ -34,7 +34,7 @@ jobs:
 
       # AQUÍ ESTÁ LA MAGIA DEL NOMBRE OFICIAL Y LA IDENTIDAD NUEVA
       - name: Build APK with Flet
-        run: flet build apk --product "Control_Financiero" --org com.mariano --project control
+        run: flet build apk --product "ConFin" --org com.mariano --project control
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
