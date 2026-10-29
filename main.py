@@ -124,8 +124,8 @@ def main(page: ft.Page):
             
             conn.close()
 
-            # Saldo Neto Disponible real = Ingresos Brutos Totales - Gastos Totales - Retiros
-            t_net = t_ing - t_gas - t_ret
+            # Saldo Neto Disponible real = Ingresos Brutos - Gastos (Los retiros NO restan porque solo cambian de digital a efectivo)
+            t_net = t_ing - t_gas
             
             txt_ingresos_top.value = f"${t_ing:,.2f}"
             txt_gastos_top.value = f"${t_gas:,.2f}"
@@ -146,31 +146,101 @@ def main(page: ft.Page):
         except Exception:
             pass
 
-    # --- DIÁLOGO DE EDICIÓN DE MOVIMIENTO ---
-    input_edit_monto = ft.TextField(label="Nuevo Monto ($)", prefix_text="$ ", keyboard_type=ft.KeyboardType.NUMBER, bgcolor=C_CARD, border_color="transparent", border_radius=12)
+    # --- DIÁLOGO DE EDICIÓN COMPLETA DE MOVIMIENTO ---
+    edit_tipo_dropdown = ft.Dropdown(
+        label="Tipo de Movimiento",
+        options=[ft.dropdown.Option("Ingreso"), ft.dropdown.Option("Gasto"), ft.dropdown.Option("Retiro")],
+        bgcolor=C_CARD, border_color="transparent", border_radius=12
+    )
+    edit_cat_dropdown = ft.Dropdown(label="Categoría", bgcolor=C_CARD, border_color="transparent", border_radius=12)
+    edit_input_monto = ft.TextField(label="Monto Bruto ($)", prefix_text="$ ", keyboard_type=ft.KeyboardType.NUMBER, bgcolor=C_CARD, border_color="transparent", border_radius=12)
+    edit_input_efectivo = ft.TextField(label="Efectivo ($)", prefix_text="$ ", keyboard_type=ft.KeyboardType.NUMBER, bgcolor=C_CARD, border_color="transparent", border_radius=12)
 
-    def abrir_editar_movimiento(mov_id, monto_actual):
-        input_edit_monto.value = str(monto_actual)
+    _edit_cat_porcentajes = {}
+
+    def actualizar_form_edicion(e=None):
+        nonlocal _edit_cat_porcentajes
+        _edit_cat_porcentajes = {}
+        tipo_sel = edit_tipo_dropdown.value
+        cats = obtener_categorias_con_porcentaje(tipo_sel)
+        edit_cat_dropdown.options = [ft.dropdown.Option(nombre) for nombre, _ in cats]
+        
+        if tipo_sel == "Ingreso":
+            edit_input_efectivo.visible = True
+            for nombre, pct in cats:
+                _edit_cat_porcentajes[nombre] = pct
+        elif tipo_sel == "Gasto":
+            edit_input_efectivo.visible = True
+        else:
+            edit_input_efectivo.visible = False
+            edit_input_efectivo.value = "0"
+            
+        if edit_cat_dropdown.options:
+            edit_cat_dropdown.value = edit_cat_dropdown.options[0].key
+        page.update()
+
+    edit_tipo_dropdown.on_change = actualizar_form_edicion
+
+    def abrir_editar_movimiento(mov_id):
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT tipo, categoria, monto_total, efectivo, gastos FROM movimientos WHERE id = ?", (mov_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        if not row: return
+        t_mov, cat_mov, m_tot, ef_mov, gas_mov = row
+
+        edit_tipo_dropdown.value = t_mov
+        actualizar_form_edicion()
+        edit_cat_dropdown.value = cat_mov if cat_mov in [o.key for o in edit_cat_dropdown.options] else (edit_cat_dropdown.options[0].key if edit_cat_dropdown.options else "")
+        
+        if t_mov == "Gasto":
+            edit_input_monto.value = str(gas_mov if gas_mov > 0 else m_tot)
+        elif t_mov == "Retiro":
+            edit_input_monto.value = str(m_tot)
+        else:
+            edit_input_monto.value = str(m_tot)
+            
+        edit_input_efectivo.value = str(ef_mov or 0)
+        page.update()
 
         def guardar_cambio(e):
             try:
-                nuevo_monto = float(input_edit_monto.value or 0)
+                mt = float(edit_input_monto.value or 0)
+                ef = float(edit_input_efectivo.value or 0)
             except ValueError:
-                mostrar_notificacion("Ingresa un número válido", C_RED)
+                mostrar_notificacion("Ingresa números válidos", C_RED)
                 return
+
+            nuevo_tipo = edit_tipo_dropdown.value
+            nueva_cat = edit_cat_dropdown.value
+
+            if nuevo_tipo == "Ingreso":
+                if mt == 0 and ef > 0: mt = ef
+                pct = _edit_cat_porcentajes.get(nueva_cat, 0.0)
+                descuento = mt * (pct / 100.0)
+                neta = mt - descuento
+                gastos_val = 0
+            elif nuevo_tipo == "Gasto":
+                if mt == 0 and ef > 0: mt = ef
+                descuento = 0
+                neta = -mt 
+                gastos_val = mt
+                mt = 0
+            else: # Retiro
+                descuento = 0
+                neta = 0
+                gastos_val = 0
+                ef = 0
 
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
-            cursor.execute("SELECT tipo FROM movimientos WHERE id = ?", (mov_id,))
-            row = cursor.fetchone()
-            if row:
-                tipo_mov = row[0]
-                if tipo_mov == "Gasto":
-                    cursor.execute("UPDATE movimientos SET monto_total = 0, gastos = ?, ganancia_neta = ? WHERE id = ?", (nuevo_monto, -nuevo_monto, mov_id))
-                elif tipo_mov == "Retiro":
-                    cursor.execute("UPDATE movimientos SET monto_total = ? WHERE id = ?", (nuevo_monto, mov_id))
-                else: # Ingreso
-                    cursor.execute("UPDATE movimientos SET monto_total = ?, ganancia_neta = ? WHERE id = ?", (nuevo_monto, nuevo_monto, mov_id))
+            cursor.execute("""
+                UPDATE movimientos 
+                SET tipo = ?, categoria = ?, monto_total = ?, efectivo = ?, descuento = ?, gastos = ?, ganancia_neta = ? 
+                WHERE id = ?
+            """, (nuevo_tipo, nueva_cat, mt, ef, descuento, gastos_val, neta, mov_id))
             conn.commit()
             conn.close()
 
@@ -178,12 +248,17 @@ def main(page: ft.Page):
             page.update()
             actualizar_dashboard()
             cargar_historial()
-            mostrar_notificacion("¡Movimiento actualizado!", C_GREEN)
+            mostrar_notificacion("¡Movimiento actualizado con éxito!", C_GREEN)
 
         page.dialog = ft.AlertDialog(
             bgcolor=C_CARD,
             title=ft.Text("Editar Movimiento", color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD),
-            content=ft.Column([input_edit_monto], tight=True),
+            content=ft.Column([
+                edit_tipo_dropdown,
+                edit_cat_dropdown,
+                edit_input_monto,
+                edit_input_efectivo
+            ], tight=True),
             actions=[
                 ft.TextButton("Cancelar", on_click=lambda e: cerrar_dialogo()),
                 ft.ElevatedButton("Guardar", bgcolor=C_BLUE, color="#FFFFFF", on_click=guardar_cambio)
@@ -308,13 +383,10 @@ def main(page: ft.Page):
 
                     if es_retiro:
                         texto_monto = f"⇄ ${monto_t:,.2f}"
-                        val_para_editar = monto_t
                     elif es_ingreso:
                         texto_monto = f"+ ${monto_t if monto_t > 0 else neta:,.2f}"
-                        val_para_editar = monto_t if monto_t > 0 else neta
                     else:
                         texto_monto = f"- ${abs(gasto_t if gasto_t > 0 else neta):,.2f}"
-                        val_para_editar = abs(gasto_t if gasto_t > 0 else neta)
 
                     lista_historial.controls.append(
                         ft.Container(
@@ -331,7 +403,7 @@ def main(page: ft.Page):
                                 ], spacing=12),
                                 ft.Row([
                                     ft.Text(texto_monto, color=color_monto, weight=ft.FontWeight.BOLD, size=13),
-                                    ft.IconButton(icon=ft.icons.EDIT_OUTLINED, icon_color=C_BLUE, icon_size=16, tooltip="Editar", on_click=lambda e, m=mov_id, val=val_para_editar: abrir_editar_movimiento(m, val)),
+                                    ft.IconButton(icon=ft.icons.EDIT_OUTLINED, icon_color=C_BLUE, icon_size=16, tooltip="Editar", on_click=lambda e, m=mov_id: abrir_editar_movimiento(m)),
                                     ft.IconButton(icon=ft.icons.DELETE_OUTLINE, icon_color=C_RED, icon_size=16, tooltip="Eliminar", on_click=lambda e, m=mov_id: borrar_movimiento(m))
                                 ], spacing=2)
                             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
