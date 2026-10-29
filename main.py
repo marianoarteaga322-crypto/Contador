@@ -5,7 +5,7 @@ import os
 import time
 
 def main(page: ft.Page):
-    # Nombre de la app con Mayúsculas
+    # --- CONFIGURACIÓN BASE ---
     page.title = "Control Financiero"
     page.theme_mode = ft.ThemeMode.DARK
     page.bgcolor = "#0B0E17"
@@ -21,10 +21,9 @@ def main(page: ft.Page):
     C_TEXT_MAIN = "#F8FAFC"
     C_TEXT_SEC = "#64748B"
 
-    # --- RUTAS DE BASE DE DATOS ANDROID (Persistencia) ---
-    # Al actualizar (sin desinstalar), los datos en esta ruta se mantienen a salvo.
-    android_path = "/data/user/0/com.flet.contador/files"
-    android_path_alt = "/data/data/com.flet.contador/files"
+    # --- NUEVA RUTA DE BASE DE DATOS ANDROID BLINDADA ---
+    android_path = "/data/user/0/com.mariano.control/files"
+    android_path_alt = "/data/data/com.mariano.control/files"
     
     if os.path.exists(android_path):
         db_path = os.path.join(android_path, "finanzas_repartidor.db")
@@ -77,9 +76,6 @@ def main(page: ft.Page):
 
     init_db()
 
-    def registrar_actividad():
-        page.client_storage.set("last_active", time.time())
-
     # --- VARIABLES GLOBALES UI ---
     txt_saldo_principal = ft.Text("$0.00", size=42, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN)
     txt_ingresos_top = ft.Text("$0.00", size=18, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN)
@@ -102,16 +98,19 @@ def main(page: ft.Page):
         return res
 
     def actualizar_dashboard():
-        registrar_actividad()
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("SELECT SUM(monto_total + efectivo), SUM(gastos), SUM(ganancia_neta) FROM movimientos")
-        res = cursor.fetchone()
+        
+        cursor.execute("SELECT SUM(monto_total) FROM movimientos WHERE tipo='Ingreso'")
+        t_ing = cursor.fetchone()[0] or 0.0
+        
+        cursor.execute("SELECT SUM(gastos) FROM movimientos WHERE tipo='Gasto'")
+        t_gas = cursor.fetchone()[0] or 0.0
+        
+        cursor.execute("SELECT SUM(ganancia_neta) FROM movimientos")
+        t_net = cursor.fetchone()[0] or 0.0
+        
         conn.close()
-
-        t_ing = res[0] or 0.0
-        t_gas = res[1] or 0.0
-        t_net = res[2] or 0.0
 
         txt_ingresos_top.value = f"${t_ing:,.2f}"
         txt_gastos_top.value = f"${t_gas:,.2f}"
@@ -126,9 +125,10 @@ def main(page: ft.Page):
         res = cursor.fetchone()
         conn.close()
         
-        t_digital = res[0] or 0.0
+        t_total = res[0] or 0.0
         t_efectivo = res[1] or 0.0
-        t_total = t_digital + t_efectivo
+        t_digital = t_total - t_efectivo
+        if t_digital < 0: t_digital = 0.0
 
         page.dialog = ft.AlertDialog(
             bgcolor=C_CARD,
@@ -272,24 +272,27 @@ def main(page: ft.Page):
     )
 
     # --- 2. DASHBOARD ---
-    # Tarjeta de ingresos interactiva
-    card_ingresos = ft.GestureDetector(
-        on_tap=mostrar_desglose_ingresos,
-        content=ft.Container(
-            content=ft.Row([
-                ft.Container(content=ft.Icon(ft.icons.ARROW_UPWARD, color=C_GREEN, size=16), bgcolor="#064E3B", padding=8, border_radius=10),
-                ft.Column([ft.Text("Ingresos", size=12, color=C_TEXT_SEC), txt_ingresos_top], spacing=0)
-            ]),
-            bgcolor=C_CARD, padding=15, border_radius=15, expand=True # Expand hace que tome el 50%
+    card_ingresos = ft.Container(
+        expand=True,
+        content=ft.GestureDetector(
+            on_tap=mostrar_desglose_ingresos,
+            content=ft.Container(
+                content=ft.Row([
+                    ft.Container(content=ft.Icon(ft.icons.ARROW_UPWARD, color=C_GREEN, size=16), bgcolor="#064E3B", padding=8, border_radius=10),
+                    ft.Column([ft.Text("Ingresos", size=12, color=C_TEXT_SEC), txt_ingresos_top], spacing=0)
+                ]),
+                bgcolor=C_CARD, padding=15, border_radius=15
+            )
         )
     )
 
     card_gastos = ft.Container(
+        expand=True,
         content=ft.Row([
             ft.Container(content=ft.Icon(ft.icons.ARROW_DOWNWARD, color=C_RED, size=16), bgcolor="#450A0A", padding=8, border_radius=10),
             ft.Column([ft.Text("Gastos", size=12, color=C_TEXT_SEC), txt_gastos_top], spacing=0)
         ]),
-        bgcolor=C_CARD, padding=15, border_radius=15, expand=True # Expand hace que tome el 50%
+        bgcolor=C_CARD, padding=15, border_radius=15
     )
 
     vista_dashboard = ft.Container(
@@ -305,13 +308,7 @@ def main(page: ft.Page):
             ft.Text("Saldo Neto Disponible", size=14, color=C_TEXT_SEC, text_align=ft.TextAlign.CENTER),
             ft.Container(content=txt_saldo_principal, alignment=ft.alignment.center),
             ft.Container(height=20),
-            
-            # FILA CON SIMETRÍA PERFECTA 50/50
-            ft.Row([
-                card_ingresos,
-                card_gastos
-            ], alignment=ft.MainAxisAlignment.CENTER, spacing=15),
-            
+            ft.Row([card_ingresos, card_gastos], alignment=ft.MainAxisAlignment.CENTER, spacing=15),
             ft.Container(height=20),
             ft.Text("Últimos Registros", size=16, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN),
             ft.Container(content=lista_historial, expand=True)
@@ -324,8 +321,8 @@ def main(page: ft.Page):
         options=[ft.dropdown.Option("Ingreso"), ft.dropdown.Option("Gasto")],
         value="Ingreso", bgcolor=C_CARD, border_color="transparent", border_radius=12
     )
-    input_monto = ft.TextField(label="Monto Bruto ($)", prefix_text="$ ", keyboard_type=ft.KeyboardType.NUMBER, bgcolor=C_CARD, border_color="transparent", border_radius=12)
-    input_efectivo = ft.TextField(label="Efectivo Recibido ($)", prefix_text="$ ", keyboard_type=ft.KeyboardType.NUMBER, bgcolor=C_CARD, border_color="transparent", border_radius=12)
+    input_monto = ft.TextField(label="Monto Bruto ($) (Total)", prefix_text="$ ", keyboard_type=ft.KeyboardType.NUMBER, bgcolor=C_CARD, border_color="transparent", border_radius=12)
+    input_efectivo = ft.TextField(label="¿Cuánto de eso fue en efectivo? ($)", prefix_text="$ ", keyboard_type=ft.KeyboardType.NUMBER, bgcolor=C_CARD, border_color="transparent", border_radius=12)
     cat_dropdown = ft.Dropdown(label="Categoría", bgcolor=C_CARD, border_color="transparent", border_radius=12)
     
     _cat_porcentajes = {}
@@ -336,7 +333,7 @@ def main(page: ft.Page):
         
         if tipo_registro.value == "Ingreso":
             input_efectivo.visible = True
-            input_monto.label = "Ganancia Bruta del Día ($)"
+            input_monto.label = "Monto Bruto ($) (Total)"
             cats = obtener_categorias_con_porcentaje("Ingreso")
             cat_dropdown.options = []
             for nombre, pct in cats:
@@ -370,9 +367,12 @@ def main(page: ft.Page):
         categoria_seleccionada = cat_dropdown.value
 
         if tipo == "Ingreso":
+            if mt == 0 and ef > 0:
+                mt = ef
+
             pct = _cat_porcentajes.get(categoria_seleccionada, 0.0)
-            descuento = (mt + ef) * (pct / 100.0)
-            neta = (mt + ef) - descuento
+            descuento = mt * (pct / 100.0)
+            neta = mt - descuento
             gastos_val = 0
         else:
             descuento = 0
@@ -505,10 +505,8 @@ def main(page: ft.Page):
         page.update()
 
     def route_change(route):
-        registrar_actividad()
         page.views.clear()
         
-        # Lógica forzada de vistas
         if page.route == "/welcome":
             page.views.append(ft.View("/welcome", [ft.SafeArea(vista_bienvenida, expand=True)], padding=0, bgcolor=C_BG))
         elif page.route == "/registro":
@@ -540,13 +538,7 @@ def main(page: ft.Page):
     actualizar_form_ajustes()
     cambiar_tab(0)
     
-    # Comprobación inicial forzada de los 5 minutos
-    ultimo_uso = page.client_storage.get("last_active") or 0
-    tiempo_actual = time.time()
-    
-    if (tiempo_actual - ultimo_uso) < 300 and ultimo_uso > 0:
-        page.go("/dashboard")
-    else:
-        page.go("/welcome")
+    # FORZAMOS LA PANTALLA DE BIENVENIDA SIEMPRE QUE INICIE LA APP
+    page.go("/welcome")
 
 ft.app(target=main)
