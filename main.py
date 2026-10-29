@@ -116,7 +116,8 @@ def main(page: ft.Page):
     barra_efectivo = ft.Container(bgcolor=C_GREEN, height=10, border_radius=5, width=10)
 
     lista_historial = ft.Column(spacing=10, scroll=ft.ScrollMode.AUTO)
-    lista_categorias = ft.Column(spacing=5, scroll=ft.ScrollMode.AUTO)
+    # Se ajusta la lista de categorías para que fluya con la página principal
+    lista_categorias = ft.Column(spacing=5) 
     input_nombre_usuario = ft.TextField(label="Tu Nombre", expand=True, bgcolor=C_CARD, border_color="transparent", border_radius=12)
 
     def mostrar_notificacion(mensaje, color):
@@ -565,7 +566,7 @@ def main(page: ft.Page):
         padding=20,
         content=ft.Column([
             ft.Row([
-                txt_saludo,  # <- Saludo dinámico (Hola, Usuario)
+                txt_saludo,
                 ft.IconButton(ft.icons.NOTIFICATIONS_OUTLINED, icon_color=C_TEXT_MAIN, on_click=abrir_notificaciones)
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
             ft.Container(height=10),
@@ -741,7 +742,7 @@ def main(page: ft.Page):
         ], scroll=ft.ScrollMode.AUTO)
     )
 
-    # --- 5. AJUSTES (AHORA INCLUYE PERFIL) ---
+    # --- 5. AJUSTES (AHORA CON SCROLL) ---
     input_n_cat = ft.TextField(label="Nombre de categoría", expand=True, bgcolor=C_CARD, border_color="transparent", border_radius=12)
     tipo_n_cat = ft.Dropdown(
         options=[ft.dropdown.Option("Ingreso"), ft.dropdown.Option("Gasto"), ft.dropdown.Option("Retiro")], 
@@ -826,8 +827,10 @@ def main(page: ft.Page):
             ft.ElevatedButton("Agregar Categoría", bgcolor=C_BLUE, color="#FFFFFF", width=float('inf'), height=50, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12)), on_click=agregar_cat),
             ft.Container(height=15),
             ft.Text("Categorías Guardadas", weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN),
-            ft.Container(content=lista_categorias, expand=True)
-        ])
+            
+            # Se muestra la lista directo aquí para que se deslice junto con toda la página
+            lista_categorias
+        ], scroll=ft.ScrollMode.AUTO) # <--- AQUÍ ACTIVAMOS EL DESLIZAMIENTO
     )
 
     # --- NAVEGACIÓN Y ENRUTAMIENTO ---
