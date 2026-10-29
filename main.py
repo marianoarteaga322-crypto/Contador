@@ -2,14 +2,14 @@ import flet as ft
 import sqlite3
 import datetime
 import os
-import time
 
 def main(page: ft.Page):
-    # --- CONFIGURACIÓN BASE ---
-    page.title = "Control Financiero"
+    page.title = "ConFin"
     page.theme_mode = ft.ThemeMode.DARK
     page.bgcolor = "#0B0E17"
     page.padding = 0
+    # Forzar modo pantalla completa real en Android
+    page.window_full_screen = True
 
     # Paleta Premium
     C_BG = "#0B0E17"
@@ -21,7 +21,7 @@ def main(page: ft.Page):
     C_TEXT_MAIN = "#F8FAFC"
     C_TEXT_SEC = "#64748B"
 
-    # --- NUEVA RUTA DE BASE DE DATOS ANDROID BLINDADA ---
+    # --- RUTA DE BASE DE DATOS ANDROID ---
     android_path = "/data/user/0/com.mariano.control/files"
     android_path_alt = "/data/data/com.mariano.control/files"
     
@@ -68,7 +68,8 @@ def main(page: ft.Page):
                 ("Ingreso", "Propinas", 0.0),
                 ("Gasto", "Gasolina", 0.0),
                 ("Gasto", "Mantenimiento", 0.0),
-                ("Gasto", "Comida", 0.0)
+                ("Gasto", "Comida", 0.0),
+                ("Retiro", "Retiro Efectivo", 0.0)
             ]
             cursor.executemany("INSERT INTO categorias (tipo, nombre, porcentaje) VALUES (?, ?, ?)", default_cats)
         conn.commit()
@@ -81,6 +82,12 @@ def main(page: ft.Page):
     txt_ingresos_top = ft.Text("$0.00", size=18, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN)
     txt_gastos_top = ft.Text("$0.00", size=18, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN)
     
+    # Widgets para la pestaña de Resumen
+    txt_resumen_ingresos = ft.Text("$0.00", size=16, color=C_GREEN, weight=ft.FontWeight.BOLD)
+    txt_resumen_gastos = ft.Text("$0.00", size=16, color=C_RED, weight=ft.FontWeight.BOLD)
+    txt_resumen_retiros = ft.Text("$0.00", size=16, color=C_BLUE, weight=ft.FontWeight.BOLD)
+    txt_resumen_neto = ft.Text("$0.00", size=22, color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD)
+
     lista_historial = ft.Column(spacing=10, scroll=ft.ScrollMode.AUTO)
     lista_categorias = ft.Column(spacing=5, scroll=ft.ScrollMode.AUTO)
 
@@ -106,6 +113,9 @@ def main(page: ft.Page):
         
         cursor.execute("SELECT SUM(gastos) FROM movimientos WHERE tipo='Gasto'")
         t_gas = cursor.fetchone()[0] or 0.0
+
+        cursor.execute("SELECT SUM(monto_total) FROM movimientos WHERE tipo='Retiro'")
+        t_ret = cursor.fetchone()[0] or 0.0
         
         cursor.execute("SELECT SUM(ganancia_neta) FROM movimientos")
         t_net = cursor.fetchone()[0] or 0.0
@@ -115,9 +125,16 @@ def main(page: ft.Page):
         txt_ingresos_top.value = f"${t_ing:,.2f}"
         txt_gastos_top.value = f"${t_gas:,.2f}"
         txt_saldo_principal.value = f"${t_net:,.2f}"
+
+        # Actualizar textos de la pestaña Resumen
+        txt_resumen_ingresos.value = f"${t_ing:,.2f}"
+        txt_resumen_gastos.value = f"${t_gas:,.2f}"
+        txt_resumen_retiros.value = f"${t_ret:,.2f}"
+        txt_resumen_neto.value = f"${t_net:,.2f}"
+
         page.update()
 
-    # --- DIÁLOGO DE DESGLOSE DE INGRESOS ---
+    # --- DIÁLOGOS DE DESGLOSE ---
     def mostrar_desglose_ingresos(e):
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
@@ -134,25 +151,38 @@ def main(page: ft.Page):
             bgcolor=C_CARD,
             title=ft.Text("Desglose de Ingresos", color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD),
             content=ft.Column([
-                ft.ListTile(
-                    leading=ft.Icon(ft.icons.PHONE_ANDROID, color=C_BLUE),
-                    title=ft.Text("Ganancia por Apps (Digital)", color=C_TEXT_SEC, size=13),
-                    subtitle=ft.Text(f"${t_digital:,.2f}", color=C_TEXT_MAIN, size=18, weight=ft.FontWeight.BOLD)
-                ),
-                ft.ListTile(
-                    leading=ft.Icon(ft.icons.ATTACH_MONEY, color=C_GREEN),
-                    title=ft.Text("Efectivo Recibido en Mano", color=C_TEXT_SEC, size=13),
-                    subtitle=ft.Text(f"${t_efectivo:,.2f}", color=C_TEXT_MAIN, size=18, weight=ft.FontWeight.BOLD)
-                ),
+                ft.ListTile(leading=ft.Icon(ft.icons.PHONE_ANDROID, color=C_BLUE), title=ft.Text("Apps (Digital)", color=C_TEXT_SEC, size=13), subtitle=ft.Text(f"${t_digital:,.2f}", color=C_TEXT_MAIN, size=18, weight=ft.FontWeight.BOLD)),
+                ft.ListTile(leading=ft.Icon(ft.icons.ATTACH_MONEY, color=C_GREEN), title=ft.Text("Efectivo en Mano", color=C_TEXT_SEC, size=13), subtitle=ft.Text(f"${t_efectivo:,.2f}", color=C_TEXT_MAIN, size=18, weight=ft.FontWeight.BOLD)),
                 ft.Divider(color="#334155"),
-                ft.Row([
-                    ft.Text("Total Ingresos:", color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD),
-                    ft.Text(f"${t_total:,.2f}", color=C_GREEN, weight=ft.FontWeight.BOLD, size=16)
-                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+                ft.Row([ft.Text("Total Ingresos:", color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD), ft.Text(f"${t_total:,.2f}", color=C_GREEN, weight=ft.FontWeight.BOLD, size=16)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
             ], tight=True),
-            actions=[
-                ft.TextButton("Cerrar", on_click=lambda e: cerrar_dialogo())
-            ]
+            actions=[ft.TextButton("Cerrar", on_click=lambda e: cerrar_dialogo())]
+        )
+        page.dialog.open = True
+        page.update()
+
+    def mostrar_desglose_gastos(e):
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT SUM(gastos), SUM(efectivo) FROM movimientos WHERE tipo = 'Gasto'")
+        res = cursor.fetchone()
+        conn.close()
+        
+        t_total = res[0] or 0.0
+        t_efectivo = res[1] or 0.0
+        t_tarjeta = t_total - t_efectivo
+        if t_tarjeta < 0: t_tarjeta = 0.0
+
+        page.dialog = ft.AlertDialog(
+            bgcolor=C_CARD,
+            title=ft.Text("Desglose de Gastos", color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD),
+            content=ft.Column([
+                ft.ListTile(leading=ft.Icon(ft.icons.CREDIT_CARD, color=C_BLUE), title=ft.Text("Pagado con Tarjeta", color=C_TEXT_SEC, size=13), subtitle=ft.Text(f"${t_tarjeta:,.2f}", color=C_TEXT_MAIN, size=18, weight=ft.FontWeight.BOLD)),
+                ft.ListTile(leading=ft.Icon(ft.icons.ATTACH_MONEY, color=C_RED), title=ft.Text("Pagado en Efectivo", color=C_TEXT_SEC, size=13), subtitle=ft.Text(f"${t_efectivo:,.2f}", color=C_TEXT_MAIN, size=18, weight=ft.FontWeight.BOLD)),
+                ft.Divider(color="#334155"),
+                ft.Row([ft.Text("Total Gastos:", color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD), ft.Text(f"${t_total:,.2f}", color=C_RED, weight=ft.FontWeight.BOLD, size=16)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+            ], tight=True),
+            actions=[ft.TextButton("Cerrar", on_click=lambda e: cerrar_dialogo())]
         )
         page.dialog.open = True
         page.update()
@@ -193,14 +223,19 @@ def main(page: ft.Page):
             for row in rows:
                 mov_id, fecha, categoria, neta, tipo = row
                 es_ingreso = (tipo == "Ingreso")
+                es_retiro = (tipo == "Retiro")
                 
+                color_monto = C_GREEN if es_ingreso else (C_BLUE if es_retiro else C_RED)
+                icono_mov = ft.icons.ACCOUNT_BALANCE_WALLET if es_retiro else (ft.icons.CHECK_CIRCLE if es_ingreso else ft.icons.REMOVE_CIRCLE)
+                bg_icono = "#1E3A8A" if es_retiro else ("#064E3B" if es_ingreso else "#450A0A")
+
                 lista_historial.controls.append(
                     ft.Container(
                         content=ft.Row([
                             ft.Row([
                                 ft.Container(
-                                    content=ft.Icon(ft.icons.CHECK_CIRCLE if es_ingreso else ft.icons.REMOVE_CIRCLE, color=C_GREEN if es_ingreso else C_RED, size=20), 
-                                    bgcolor="#064E3B" if es_ingreso else "#450A0A", padding=10, border_radius=12
+                                    content=ft.Icon(icono_mov, color=color_monto, size=20), 
+                                    bgcolor=bg_icono, padding=10, border_radius=12
                                 ),
                                 ft.Column([
                                     ft.Text(categoria, color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD, size=15),
@@ -208,7 +243,7 @@ def main(page: ft.Page):
                                 ], spacing=2, alignment=ft.MainAxisAlignment.CENTER)
                             ], spacing=12),
                             ft.Row([
-                                ft.Text(f"{'+' if es_ingreso else '-'} ${abs(neta):,.2f}", color=C_GREEN if es_ingreso else C_RED, weight=ft.FontWeight.BOLD, size=14),
+                                ft.Text(f"{'+' if es_ingreso else ('-' if not es_retiro else '')} ${abs(neta):,.2f}", color=color_monto, weight=ft.FontWeight.BOLD, size=14),
                                 ft.IconButton(icon=ft.icons.DELETE_OUTLINE, icon_color=C_RED, icon_size=18, tooltip="Eliminar", on_click=lambda e, m=mov_id: borrar_movimiento(m))
                             ], spacing=5)
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
@@ -235,16 +270,8 @@ def main(page: ft.Page):
                         ft.IconButton(ft.icons.CLOSE, icon_color=C_TEXT_SEC, on_click=lambda e: cerrar_sheet())
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                     ft.Divider(color="#334155"),
-                    ft.ListTile(
-                        leading=ft.Icon(ft.icons.LIGHTBULB_OUTLINE, color="#FBBF24"),
-                        title=ft.Text("Consejo Financiero", color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD),
-                        subtitle=ft.Text("Recuerda separar tus descuentos o impuestos de tus ganancias netas.", color=C_TEXT_SEC)
-                    ),
-                    ft.ListTile(
-                        leading=ft.Icon(ft.icons.RECEIPT_LONG, color=C_BLUE),
-                        title=ft.Text(f"Descuentos Acumulados: ${total_descuentos:,.2f}", color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD),
-                        subtitle=ft.Text("Total retenido de tus categorías configuradas.", color=C_TEXT_SEC)
-                    ),
+                    ft.ListTile(leading=ft.Icon(ft.icons.LIGHTBULB_OUTLINE, color="#FBBF24"), title=ft.Text("Consejo Financiero", color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD), subtitle=ft.Text("Recuerda separar tus retenciones e impuestos de tus ganancias.", color=C_TEXT_SEC)),
+                    ft.ListTile(leading=ft.Icon(ft.icons.RECEIPT_LONG, color=C_BLUE), title=ft.Text(f"Descuentos Acumulados: ${total_descuentos:,.2f}", color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD), subtitle=ft.Text("Total retenido de tus categorías configuradas.", color=C_TEXT_SEC)),
                     ft.Container(height=10)
                 ], tight=True)
             )
@@ -263,15 +290,15 @@ def main(page: ft.Page):
         content=ft.Column([
             ft.Container(height=100),
             ft.Icon(ft.icons.MULTILINE_CHART, size=100, color=C_BLUE),
-            ft.Text("Control\nFinanciero", size=40, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN, text_align=ft.TextAlign.CENTER),
-            ft.Text("Gestiona tus repartos de forma inteligente.", size=16, color=C_TEXT_SEC, text_align=ft.TextAlign.CENTER),
+            ft.Text("ConFin", size=40, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN, text_align=ft.TextAlign.CENTER),
+            ft.Text("Gestiona tus finanzas de forma inteligente.", size=16, color=C_TEXT_SEC, text_align=ft.TextAlign.CENTER),
             ft.Container(expand=True),
             ft.ElevatedButton("Comenzar", bgcolor=C_BLUE, color="#FFFFFF", width=300, height=55, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=15)), on_click=lambda e: page.go("/dashboard")),
             ft.Container(height=40)
         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER)
     )
 
-    # --- 2. DASHBOARD ---
+    # --- 2. DASHBOARD (INICIO) ---
     card_ingresos = ft.Container(
         expand=True,
         content=ft.GestureDetector(
@@ -288,11 +315,16 @@ def main(page: ft.Page):
 
     card_gastos = ft.Container(
         expand=True,
-        content=ft.Row([
-            ft.Container(content=ft.Icon(ft.icons.ARROW_DOWNWARD, color=C_RED, size=16), bgcolor="#450A0A", padding=8, border_radius=10),
-            ft.Column([ft.Text("Gastos", size=12, color=C_TEXT_SEC), txt_gastos_top], spacing=0)
-        ]),
-        bgcolor=C_CARD, padding=15, border_radius=15
+        content=ft.GestureDetector(
+            on_tap=mostrar_desglose_gastos,
+            content=ft.Container(
+                content=ft.Row([
+                    ft.Container(content=ft.Icon(ft.icons.ARROW_DOWNWARD, color=C_RED, size=16), bgcolor="#450A0A", padding=8, border_radius=10),
+                    ft.Column([ft.Text("Gastos", size=12, color=C_TEXT_SEC), txt_gastos_top], spacing=0)
+                ]),
+                bgcolor=C_CARD, padding=15, border_radius=15
+            )
+        )
     )
 
     vista_dashboard = ft.Container(
@@ -315,10 +347,41 @@ def main(page: ft.Page):
         ])
     )
 
-    # --- 3. REGISTRO ---
+    # --- 3. NUEVA VISTA: RESUMEN Y GRÁFICOS ---
+    vista_resumen = ft.Container(
+        expand=True,
+        gradient=ft.LinearGradient(begin=ft.alignment.top_center, end=ft.alignment.center, colors=["#1E1B4B", C_BG]),
+        padding=20,
+        content=ft.Column([
+            ft.Container(height=30),
+            ft.Text("Resumen Financiero", size=26, weight=ft.FontWeight.BOLD, color=C_TEXT_MAIN),
+            ft.Text("Balance general de tus operaciones", color=C_TEXT_SEC, size=14),
+            ft.Container(height=20),
+            ft.Card(
+                color=C_CARD,
+                content=ft.Container(
+                    padding=20,
+                    content=ft.Column([
+                        ft.Text("ESTADÍSTICAS GENERALES", size=12, color=C_BLUE, weight=ft.FontWeight.BOLD),
+                        ft.Divider(color="#334155"),
+                        ft.Row([ft.Text("Total Ingresos Brutos:", color=C_TEXT_SEC), txt_resumen_ingresos], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Row([ft.Text("Total Gastos Operativos:", color=C_TEXT_SEC), txt_resumen_gastos], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Row([ft.Text("Total Retiros Realizados:", color=C_TEXT_SEC), txt_resumen_retiros], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Divider(color="#334155"),
+                        ft.Row([ft.Text("Balance Neto Global:", color=C_TEXT_MAIN, weight=ft.FontWeight.BOLD), txt_resumen_neto], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                    ], spacing=12)
+                )
+            ),
+            ft.Container(height=20),
+            ft.Icon(ft.icons.BAR_CHART, size=60, color=C_PURPLE),
+            ft.Text("Tus finanzas se actualizan en tiempo real.", color=C_TEXT_SEC, text_align=ft.TextAlign.CENTER, size=13)
+        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, scroll=ft.ScrollMode.AUTO)
+    )
+
+    # --- 4. REGISTRO ---
     tipo_registro = ft.Dropdown(
         label="Tipo de Movimiento",
-        options=[ft.dropdown.Option("Ingreso"), ft.dropdown.Option("Gasto")],
+        options=[ft.dropdown.Option("Ingreso"), ft.dropdown.Option("Gasto"), ft.dropdown.Option("Retiro")],
         value="Ingreso", bgcolor=C_CARD, border_color="transparent", border_radius=12
     )
     input_monto = ft.TextField(label="Monto Bruto ($) (Total)", prefix_text="$ ", keyboard_type=ft.KeyboardType.NUMBER, bgcolor=C_CARD, border_color="transparent", border_radius=12)
@@ -333,20 +396,24 @@ def main(page: ft.Page):
         
         if tipo_registro.value == "Ingreso":
             input_efectivo.visible = True
+            input_efectivo.label = "¿Cuánto de eso fue en efectivo? ($)"
             input_monto.label = "Monto Bruto ($) (Total)"
             cats = obtener_categorias_con_porcentaje("Ingreso")
-            cat_dropdown.options = []
+            cat_dropdown.options = [ft.dropdown.Option(nombre) for nombre, _ in cats]
             for nombre, pct in cats:
-                cat_dropdown.options.append(ft.dropdown.Option(nombre))
                 _cat_porcentajes[nombre] = pct
-        else:
+        elif tipo_registro.value == "Gasto":
+            input_efectivo.visible = True
+            input_efectivo.label = "¿Cuánto de eso fue en efectivo? ($)"
+            input_monto.label = "Monto Total del Gasto ($)"
+            cats = obtener_categorias_con_porcentaje("Gasto")
+            cat_dropdown.options = [ft.dropdown.Option(nombre) for nombre, _ in cats]
+        else: # Retiro
             input_efectivo.visible = False
             input_efectivo.value = "0"
-            input_monto.label = "Monto del Gasto ($)"
-            cats = obtener_categorias_con_porcentaje("Gasto")
-            cat_dropdown.options = []
-            for nombre, pct in cats:
-                cat_dropdown.options.append(ft.dropdown.Option(nombre))
+            input_monto.label = "Monto del Retiro ($)"
+            cats = obtener_categorias_con_porcentaje("Retiro")
+            cat_dropdown.options = [ft.dropdown.Option(nombre) for nombre, _ in cats]
         
         if cat_dropdown.options:
             cat_dropdown.value = cat_dropdown.options[0].key
@@ -367,18 +434,21 @@ def main(page: ft.Page):
         categoria_seleccionada = cat_dropdown.value
 
         if tipo == "Ingreso":
-            if mt == 0 and ef > 0:
-                mt = ef
-
+            if mt == 0 and ef > 0: mt = ef
             pct = _cat_porcentajes.get(categoria_seleccionada, 0.0)
             descuento = mt * (pct / 100.0)
             neta = mt - descuento
             gastos_val = 0
-        else:
+        elif tipo == "Gasto":
+            if mt == 0 and ef > 0: mt = ef
             descuento = 0
             neta = -mt 
             gastos_val = mt
             mt = 0
+        else: # Retiro
+            descuento = 0
+            neta = -mt # El retiro sale del disponible
+            gastos_val = 0
 
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
@@ -408,10 +478,10 @@ def main(page: ft.Page):
         ], scroll=ft.ScrollMode.AUTO)
     )
 
-    # --- 4. AJUSTES ---
+    # --- 5. AJUSTES ---
     input_n_cat = ft.TextField(label="Nombre de categoría", expand=True, bgcolor=C_CARD, border_color="transparent", border_radius=12)
     tipo_n_cat = ft.Dropdown(
-        options=[ft.dropdown.Option("Ingreso"), ft.dropdown.Option("Gasto")], 
+        options=[ft.dropdown.Option("Ingreso"), ft.dropdown.Option("Gasto"), ft.dropdown.Option("Retiro")], 
         value="Ingreso", width=120, bgcolor=C_CARD, border_color="transparent", border_radius=12
     )
     input_pct_cat = ft.TextField(label="% Descuento fijo", value="0.0", width=120, keyboard_type=ft.KeyboardType.NUMBER, bgcolor=C_CARD, border_color="transparent", border_radius=12)
@@ -486,22 +556,24 @@ def main(page: ft.Page):
         ])
     )
 
-    # --- NAVEGACIÓN Y ENRUTAMIENTO ---
+    # --- NAVEGACIÓN Y ENRUTAMIENTO CON 3 PESTAÑAS (Inicio, Resumen, Ajustes) ---
     nav_bar = ft.NavigationBar(
         bgcolor=C_BG, selected_index=0,
         destinations=[
             ft.NavigationBarDestination(icon=ft.icons.HOME_OUTLINED, selected_icon=ft.icons.HOME, label="Inicio"),
+            ft.NavigationBarDestination(icon=ft.icons.BAR_CHART_OUTLINED, selected_icon=ft.icons.BAR_CHART, label="Resumen"),
             ft.NavigationBarDestination(icon=ft.icons.SETTINGS_OUTLINED, selected_icon=ft.icons.SETTINGS, label="Ajustes"),
         ],
         on_change=lambda e: cambiar_tab(e.control.selected_index)
     )
 
     fab = ft.FloatingActionButton(icon=ft.icons.ADD, bgcolor=C_BLUE, shape=ft.RoundedRectangleBorder(radius=15), on_click=lambda e: page.go("/registro"))
-    contenedor_base = ft.Stack([vista_dashboard, vista_ajustes], expand=True)
+    contenedor_base = ft.Stack([vista_dashboard, vista_resumen, vista_ajustes], expand=True)
     
     def cambiar_tab(index):
         vista_dashboard.visible = (index == 0)
-        vista_ajustes.visible = (index == 1)
+        vista_resumen.visible = (index == 1)
+        vista_ajustes.visible = (index == 2)
         page.update()
 
     def route_change(route):
@@ -527,18 +599,16 @@ def main(page: ft.Page):
         page.views.pop()
         page.go(page.views[-1].route)
 
-    # Enganchamos las rutas a la app
     page.on_route_change = route_change
     page.on_view_pop = view_pop
 
-    # Inicialización de datos
+    # Inicialización
     actualizar_dashboard()
     cargar_historial()
     refrescar_cats()
     actualizar_form_ajustes()
     cambiar_tab(0)
     
-    # FORZAMOS LA PANTALLA DE BIENVENIDA SIEMPRE QUE INICIE LA APP
     page.go("/welcome")
 
 ft.app(target=main)
