@@ -122,7 +122,10 @@ def main(page: ft.Page):
             t_ret = cursor.fetchone()[0] or 0.0
             
             cursor.execute("SELECT SUM(ganancia_neta) FROM movimientos")
-            t_net = cursor.fetchone()[0] or 0.0
+            t_net_ing = cursor.fetchone()[0] or 0.0
+
+            # Saldo Neto Disponible real = Ingresos Netos - Gastos - Retiros (los retiros salen del saldo digital disponible)
+            t_net = t_net_ing - t_gas - t_ret
             
             conn.close()
 
@@ -228,7 +231,6 @@ def main(page: ft.Page):
             lista_historial.controls.clear()
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
-            # Seleccionamos también monto_total para mostrar el valor correcto en los retiros
             cursor.execute("SELECT id, fecha, categoria, ganancia_neta, tipo, monto_total FROM movimientos ORDER BY id DESC LIMIT 30")
             rows = cursor.fetchall()
             conn.close()
@@ -253,7 +255,7 @@ def main(page: ft.Page):
                     icono_mov = ft.icons.SWAPS_ROUNDED if es_retiro else (ft.icons.CHECK_CIRCLE if es_ingreso else ft.icons.REMOVE_CIRCLE)
                     bg_icono = "#1E3A8A" if es_retiro else ("#064E3B" if es_ingreso else "#450A0A")
 
-                    # Si es retiro, mostramos el monto total con flechitas indicando traspaso a efectivo
+                    # Mostrar formato correcto según el tipo de movimiento
                     if es_retiro:
                         texto_monto = f"⇄ ${monto_t:,.2f}"
                     elif es_ingreso:
@@ -283,8 +285,8 @@ def main(page: ft.Page):
                         )
                     )
             page.update()
-        except Exception:
-            pass
+        except Exception as ex:
+            print("Error cargando historial:", ex)
 
     # --- PANEL DE NOTIFICACIONES ---
     def abrir_notificaciones(e):
@@ -498,7 +500,7 @@ def main(page: ft.Page):
             neta = -mt 
             gastos_val = mt
             mt = 0
-        else: # Retiro (Guardamos el monto total en mt para que se refleje bien en el historial)
+        else: # Retiro
             descuento = 0
             neta = 0
             gastos_val = 0
