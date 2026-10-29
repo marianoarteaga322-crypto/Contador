@@ -22,7 +22,6 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # La versión exacta y perfecta para Flet 0.23.2
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -33,8 +32,9 @@ jobs:
           pip install --upgrade pip
           pip install flet==0.23.2
 
+      # AQUÍ ESTÁ LA MAGIA DEL NOMBRE OFICIAL Y LA IDENTIDAD NUEVA
       - name: Build APK with Flet
-        run: flet build apk
+        run: flet build apk --product "Control Financiero" --org com.mariano --project control
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
